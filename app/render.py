@@ -513,18 +513,18 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
     y = 60
 
     # Title
-    title_font = _font(56, bold=True)
+    title_font = _font(112, bold=True)
     draw.text((x, y), "Setup Required", fill=BLACK, font=title_font)
-    y += 80
+    y += 160
 
     # Separator
     draw.line([(x, y), (W - MARGIN, y)], fill=GRAY_MID, width=2)
-    y += 30
+    y += 60
 
-    step_font = _font(32, bold=True)
-    text_font = _font(26)
-    code_font = _font(24)
-    indent = x + 20
+    step_font = _font(128, bold=True)
+    text_font = _font(104)
+    code_font = _font(96)
+    indent = x + 40
 
     steps = [
         ("step", "1. Create Google OAuth Credentials"),
@@ -550,25 +550,26 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
 
     for kind, line in steps:
         if kind == "blank":
-            y += 14
+            y += 28
         elif kind == "step":
             draw.text((x, y), line, fill=BLACK, font=step_font)
-            y += 38
+            y += 76
         elif kind == "text":
             draw.text((indent, y), line, fill=GRAY_DARK, font=text_font)
-            y += 32
+            y += 64
         elif kind == "code":
-            # Draw code in a light box
+            # Draw code with a border-only outline (no fill), +1px expansion
             tw = _text_w(draw, line, code_font)
-            box_w = min(tw + 16, W - MARGIN - indent)
-            draw.rectangle([indent - 4, y - 2, indent + box_w, y + 30], fill=GRAY_VLIGHT)
+            box_w = min(tw + 32, W - MARGIN - indent + 8)
+            draw.rectangle([indent - 8, y - 4, indent - 8 + box_w + 2, y + 60 + 2],
+                           outline=GRAY_MID, width=2)
             # Truncate if too long
             display = line
-            while _text_w(draw, display, code_font) > W - MARGIN - indent - 12 and len(display) > 3:
+            while _text_w(draw, display, code_font) > W - MARGIN - indent - 16 and len(display) > 3:
                 display = display[:-1]
             if display != line:
                 display = display[:-1] + "…"
-            draw.text((indent + 4, y + 2), display, fill=BLACK, font=code_font)
-            y += 36
+            draw.text((indent, y + 4), display, fill=BLACK, font=code_font)
+            y += 72
 
     return img

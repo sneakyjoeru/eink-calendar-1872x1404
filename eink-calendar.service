@@ -1,0 +1,16 @@
+[Unit]
+Description=E-Ink Calendar (Orange Pi Zero 2W + IT8951)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/eink-calendar
+ExecStart=/usr/bin/python3 -m app.main
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

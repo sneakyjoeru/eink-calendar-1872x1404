@@ -1,0 +1,17 @@
+# Core
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-multipart==0.0.20
+
+# Google Calendar
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.156.0
+google-auth-httplib2==0.2.0
+
+# Rendering
+Pillow==11.1.0
+qrcode==8.0
+
+# HTTP
+requests==2.32.3

@@ -498,3 +498,77 @@ def render_status(message: str, submessage: str = "") -> Image.Image:
         draw.text(((W - sw) // 2, H // 2 + 30), submessage, fill=GRAY_DARK, font=sub_font)
 
     return img
+
+
+def render_setup_required(lan_ip: str, port: int) -> Image.Image:
+    """Render the 'Setup Required' screen with Google OAuth instructions.
+
+    Shows step-by-step instructions for creating Google OAuth credentials
+    and uploading client_secret.json to the Pi.
+    """
+    img = Image.new("RGB", (W, H), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    x = MARGIN
+    y = 60
+
+    # Title
+    title_font = _font(56, bold=True)
+    draw.text((x, y), "Setup Required", fill=BLACK, font=title_font)
+    y += 80
+
+    # Separator
+    draw.line([(x, y), (W - MARGIN, y)], fill=GRAY_MID, width=2)
+    y += 30
+
+    step_font = _font(32, bold=True)
+    text_font = _font(26)
+    code_font = _font(24)
+    indent = x + 20
+
+    steps = [
+        ("step", "1. Create Google OAuth Credentials"),
+        ("text", "Go to console.cloud.google.com"),
+        ("text", "Create or select a project"),
+        ("text", "Enable Google Calendar API"),
+        ("text", "Credentials > Create > OAuth client ID"),
+        ("text", "Type: Web application"),
+        ("text", f"Redirect URI: http://{lan_ip}:{port}/auth/callback"),
+        ("text", "Download client_secret.json"),
+        ("blank", ""),
+        ("step", "2. Upload to the Pi"),
+        ("code", f"scp client_secret.json root@{lan_ip}:/opt/eink-calendar/config/"),
+        ("blank", ""),
+        ("step", "3. Restart the app"),
+        ("code", "ssh root@192.168.0.199 'systemctl restart eink-calendar'"),
+        ("blank", ""),
+        ("step", "After restart:"),
+        ("text", "E-ink will show a QR code"),
+        ("text", f"Open http://{lan_ip}:{port}/settings"),
+        ("text", "Login with Google > select calendars"),
+    ]
+
+    for kind, line in steps:
+        if kind == "blank":
+            y += 14
+        elif kind == "step":
+            draw.text((x, y), line, fill=BLACK, font=step_font)
+            y += 38
+        elif kind == "text":
+            draw.text((indent, y), line, fill=GRAY_DARK, font=text_font)
+            y += 32
+        elif kind == "code":
+            # Draw code in a light box
+            tw = _text_w(draw, line, code_font)
+            box_w = min(tw + 16, W - MARGIN - indent)
+            draw.rectangle([indent - 4, y - 2, indent + box_w, y + 30], fill=GRAY_VLIGHT)
+            # Truncate if too long
+            display = line
+            while _text_w(draw, display, code_font) > W - MARGIN - indent - 12 and len(display) > 3:
+                display = display[:-1]
+            if display != line:
+                display = display[:-1] + "…"
+            draw.text((indent + 4, y + 2), display, fill=BLACK, font=code_font)
+            y += 36
+
+    return img

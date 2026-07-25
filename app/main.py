@@ -127,6 +127,10 @@ def background_loop():
             s = settings_store.load()
 
             if not calendar_client.is_authenticated():
+                if not calendar_client.is_configured():
+                    lan_ip = _get_lan_ip()
+                    img = render.render_setup_required(lan_ip, config.APP_PORT)
+                    driver.render_to_screen(img, brightness=1.0)
                 # Show setup screen every 5 min
                 time.sleep(300)
                 continue
@@ -162,7 +166,8 @@ async def startup():
 
     # Initial screen
     if not calendar_client.is_configured():
-        render_status_screen("Setup Required", "Place client_secret.json in config/")
+        img = render.render_setup_required(lan_ip, config.APP_PORT)
+        driver.render_to_screen(img, brightness=1.0)
     elif not calendar_client.is_authenticated():
         render_setup_screen()
     else:

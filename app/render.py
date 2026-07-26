@@ -512,18 +512,18 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
     x = MARGIN
     y = 36
 
-    # Title (same size as calendar month header)
-    title_font = _font(56, bold=True)
+    # Title
+    title_font = _font(64, bold=True)
     draw.text((x, y), "Setup Required", fill=BLACK, font=title_font)
-    y += 72
+    y += 80
 
     # Separator
     draw.line([(x, y), (W - MARGIN, y)], fill=GRAY_MID, width=2)
-    y += 32
+    y += 36
 
-    step_font = _font(44, bold=True)
-    text_font = _font(34)
-    code_font = _font(30)
+    step_font = _font(56, bold=True)
+    text_font = _font(44)
+    code_font = _font(38)
     indent = x + 24
 
     steps = [
@@ -550,17 +550,17 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
 
     for kind, line in steps:
         if kind == "blank":
-            y += 14
+            y += 16
         elif kind == "step":
             draw.text((x, y), line, fill=BLACK, font=step_font)
-            y += 52
+            y += 64
         elif kind == "text":
             draw.text((indent, y), line, fill=GRAY_DARK, font=text_font)
-            y += 42
+            y += 54
         elif kind == "code":
             tw = _text_w(draw, line, code_font)
             box_w = min(tw + 24, W - MARGIN - indent + 8)
-            box_h = 40
+            box_h = 48
             draw.rectangle([indent - 8, y - 2, indent - 8 + box_w + 2, y + box_h + 2],
                            outline=GRAY_MID, width=2)
             # Truncate if too long
@@ -570,6 +570,6 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
             if display != line:
                 display = display[:-1] + "…"
             draw.text((indent, y + 4), display, fill=BLACK, font=code_font)
-            y += 46
+            y += 56
 
     return img

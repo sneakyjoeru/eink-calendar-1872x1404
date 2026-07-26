@@ -541,9 +541,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             pad = 4
             rect_top = dow_y + bb_dow[1] - pad
             rect_bot = date_y + bb_date[3] + pad
-            rect_left = min(dow_x, date_x) - pad
-            rect_right = max(dow_x + dw, date_x + dw2) + pad
-            draw.rectangle([rect_left, rect_top, rect_right, rect_bot], fill=BLACK)
+            draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
             draw.text((dow_x, dow_y), dow, fill=WHITE, font=dow_font)
             draw.text((date_x, date_y), date_str, fill=WHITE, font=date_font)
         else:

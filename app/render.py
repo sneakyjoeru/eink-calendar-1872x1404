@@ -357,53 +357,15 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             # Event block (light grey bg, 2px black border, black text)
             draw.rectangle([x + 6, ey_top, x + col_w - 6, ey_top + eh - 1],
                            fill=GRAY_VLIGHT, outline=BLACK, width=2)
-
-            # Build text: "HH:MM-HH:MM Summary" on line 1, then description
-            avail_w = col_w - 16  # padding inside box
-            time_str = _ev_time_str(ev, now)
-            end_time_str = _ev_end_time_str(ev, now)
-            if time_str and end_time_str:
-                time_range = f"{time_str}-{end_time_str}"
-            elif time_str:
-                time_range = time_str
+            # Title text (black on light grey)
+            label = ev["summary"][:20]
+            if eh > 24:
+                draw.text((x + 10, ey_top + 4), label, fill=BLACK, font=event_font)
+                time_str = _ev_time_str(ev, now)
+                draw.text((x + 10, ey_top + eh - 20), time_str, fill=BLACK, font=event_font_sm)
             else:
-                time_range = ""
-
-            # Line 1: time range + summary
-            summary = ev.get("summary", "").strip()
-            if time_range:
-                line1 = f"{time_range} {summary}"
-            else:
-                line1 = summary
-
-            # Truncate line 1 to fit
-            if _text_w(draw, line1, event_font_sm) > avail_w:
-                while len(line1) > 4 and _text_w(draw, line1 + "…", event_font_sm) > avail_w:
-                    line1 = line1[:-1]
-                line1 += "…"
-
-            # Line 2: description (if space)
-            desc = ev.get("description", "").strip()
-            # Take first line of description, strip excessive length
-            if desc:
-                desc = desc.split("\n")[0][:60]
-
-            line_h = 18
-            if eh >= line_h * 2:
-                # Two lines fit
-                draw.text((x + 10, ey_top + 2), line1, fill=BLACK, font=event_font_sm)
-                if desc:
-                    if _text_w(draw, desc, event_font_sm) > avail_w:
-                        while len(desc) > 3 and _text_w(draw, desc + "…", event_font_sm) > avail_w:
-                            desc = desc[:-1]
-                        desc += "…"
-                    draw.text((x + 10, ey_top + 2 + line_h), desc, fill=BLACK, font=event_font_sm)
-                elif eh >= line_h * 3 and time_range:
-                    # No description but enough space — show summary in larger font
-                    draw.text((x + 10, ey_top + 2 + line_h), summary[:int(avail_w / 8)], fill=BLACK, font=event_font_sm)
-            elif eh >= line_h:
-                # Single line — show time+summary
-                draw.text((x + 10, ey_top + 2), line1, fill=BLACK, font=event_font_sm)
+                # Too short for two lines — just the title
+                draw.text((x + 10, ey_top + 2), label[:12], fill=BLACK, font=event_font_sm)
 
 
 def _ev_minutes(ev: dict, now: datetime.datetime, start: bool = True) -> int:

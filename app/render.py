@@ -19,8 +19,8 @@ W = config.SCREEN_W
 H = config.SCREEN_H
 
 # Margins (pixels)
-MARGIN = 84   # left margin for hour labels
-RIGHT_PAD = 16  # right edge padding (minimal)
+MARGIN = 78   # left margin for hour labels
+RIGHT_PAD = 10  # right edge padding
 HEADER_H = 120
 FOOTER_H = 30
 
@@ -795,9 +795,21 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
         return  # Outside visible range
 
     days = 7
-    grid_x = MARGIN
+
+    # Replicate dynamic left margin from _render_day_grid
+    hour_font = _font(26, bold=True)
+    max_label_w = 0
+    for h in range(ds_h, de_h + 1):
+        if False:  # 12h not used here
+            pass
+        else:
+            label = f"{h:02d}"
+        lw = _text_w(draw, label, hour_font)
+        if lw > max_label_w:
+            max_label_w = lw
+    grid_x = max(60, max_label_w + 14)
     grid_y = HEADER_H + 50
-    grid_w = W - MARGIN - RIGHT_PAD
+    grid_w = W - grid_x - RIGHT_PAD
     grid_h = H - grid_y - FOOTER_H
     col_w = grid_w // days
     span_min = de_min - ds_min

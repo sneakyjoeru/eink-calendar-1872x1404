@@ -30,10 +30,12 @@ _FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
 _FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+_SIZE_MODIFIER = 0  # global font size adjustment, set before each render
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Get a cached font instance."""
+    """Get a cached font instance, adjusted by global size modifier."""
+    size = max(4, size + _SIZE_MODIFIER)
     path = _FONT_PATHS[1] if bold else _FONT_PATHS[0]
     key = (path, size)
     if key not in _FONT_CACHE:
@@ -71,11 +73,15 @@ def render_calendar(view_mode: str, events: list[dict],
                     settings_url: str = "",
                     crossed_event_dim: bool = False,
                     dim_past_events: bool = False,
+                    text_size_modifier: int = 0,
                     now: Optional[datetime.datetime] = None) -> Image.Image:
     """Render the full calendar view to a PIL Image.
 
     Returns an RGB image (will be converted to grayscale by the C driver).
     """
+    global _SIZE_MODIFIER
+    _SIZE_MODIFIER = text_size_modifier
+
     if now is None:
         now = datetime.datetime.now()
 

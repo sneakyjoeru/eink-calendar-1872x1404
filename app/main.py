@@ -190,6 +190,7 @@ def do_render(force: bool = False) -> bool:
             settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
             crossed_event_dim=settings.get("crossed_event_dim", False),
             dim_past_events=settings.get("dim_past_events", False),
+            text_size_modifier=settings.get("text_size_modifier", 0),
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
@@ -388,6 +389,7 @@ async def settings_page(request: Request):
     sel_df_AB_d = 'selected' if date_fmt == '%A, %B %d' else ''
     dim_past = s.get("dim_past_events", False)
     crossed_dim = s.get("crossed_event_dim", False)
+    ts_mod = s.get("text_size_modifier", 0)
 
     return _SETTINGS_HTML.format(
         saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
@@ -417,6 +419,7 @@ async def settings_page(request: Request):
         sel_df_AB_d=sel_df_AB_d,
         dim_past='checked' if dim_past else '',
         crossed_dim='checked' if crossed_dim else '',
+        ts_mod=ts_mod,
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
         lan_ip=lan_ip,
@@ -454,6 +457,7 @@ async def update_settings(request: Request):
         "date_format": fd.get("date_format", ""),
         "crossed_event_dim": fd.get("crossed_event_dim") == "1",
         "dim_past_events": fd.get("dim_past_events") == "1",
+        "text_size_modifier": int(fd.get("text_size_modifier", 0)),
         "selected_calendars": fd.getlist("selected_calendars"),
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
@@ -808,6 +812,10 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     <label style="display:flex;align-items:center;gap:8px">
       <input type="checkbox" name="dim_past_events" value="1" {dim_past} style="width:auto">
       <span>Dim past events</span>
+    </label>
+    <label>Text Size Modifier (+/-)
+      <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px;font-size:0.9em">
+      <span style="font-size:0.75em;color:#666">Adjust all text sizes (+2 = larger, -2 = smaller)</span>
     </label>
     <label>Timezone
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP" style="font-size:0.85em">

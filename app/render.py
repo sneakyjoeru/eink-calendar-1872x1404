@@ -422,26 +422,6 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         x = grid_x + i * col_w
         draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=GRAY_LIGHT, width=1)
 
-    # Full-day events — draw ON TOP of hour lines so bars aren't crossed
-    for i in range(days):
-        d = start_date + datetime.timedelta(days=i)
-        x = grid_x + i * col_w
-        fd_list = fd_events_by_date.get(d, [])
-        for j, ev in enumerate(fd_list[:max_full_day]):
-            ey = fd_y + j * 28
-            label = ev.get("summary", "")
-            if not label or label == "(No title)":
-                continue
-            label = label[:15]
-            fd_font = _font(20)
-            if _text_w(draw, label + "…", fd_font) > col_w - 8:
-                while len(label) > 2 and _text_w(draw, label + "…", fd_font) > col_w - 8:
-                    label = label[:-1]
-                label += "…"
-            draw.rounded_rectangle([x + 4, ey - 2, x + col_w - 4, ey + 22], radius=6,
-                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
-            draw.text((x + 8, ey - 1), label, fill=BLACK, font=fd_font)
-
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
     dow_font = _font(30, bold=True)
     date_font = _font(24)
@@ -462,11 +442,11 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             th = _text_h(draw, date_str, date_font)
             pad = 3
             tx = cx - dw2 // 2
-            ty = grid_y - 24
+            ty = grid_y - 29
             draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
             draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
         else:
-            draw.text((cx - dw2 // 2, grid_y - 24), date_str, fill=color, font=date_font)
+            draw.text((cx - dw2 // 2, grid_y - 29), date_str, fill=color, font=date_font)
 
     # Timed events
     timed_events_by_date: dict[datetime.date, list[dict]] = {}
@@ -558,6 +538,26 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             elif time_str:
                 # No title, just time
                 draw.text((txt_x, ey_top + 4), time_str, fill=BLACK, font=event_font)
+
+    # Full-day events — drawn LAST so they cover everything (day headers, timed events)
+    for i in range(days):
+        d = start_date + datetime.timedelta(days=i)
+        x = grid_x + i * col_w
+        fd_list = fd_events_by_date.get(d, [])
+        for j, ev in enumerate(fd_list[:max_full_day]):
+            ey = fd_y + j * 28
+            label = ev.get("summary", "")
+            if not label or label == "(No title)":
+                continue
+            label = label[:15]
+            fd_font = _font(20)
+            if _text_w(draw, label + "…", fd_font) > col_w - 8:
+                while len(label) > 2 and _text_w(draw, label + "…", fd_font) > col_w - 8:
+                    label = label[:-1]
+                label += "…"
+            draw.rounded_rectangle([x + 4, ey - 2, x + col_w - 4, ey + 22], radius=6,
+                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
+            draw.text((x + 8, ey - 1), label, fill=BLACK, font=fd_font)
 
 
 def _wrap_text_lines(draw, text, font, max_w):

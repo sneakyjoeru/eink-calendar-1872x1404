@@ -512,35 +512,55 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
                                    fill=GRAY_VLIGHT, outline=BLACK, width=2)
 
-        # Draw text: for larger events, text starts below any overlapping smaller event
+        # Draw text: line-by-line, skipping only lines fully inside overlap zones
         line_h = 26
         for ev, ey_top, ey_bot, eh, duration, xl, xr in draw_infos:
-            # Determine text start Y — pushed below overlapping shorter events
-            text_y = ey_top + 4
-            for o_ev, o_top, o_bot, o_eh, o_dur, o_xl, o_xr in draw_infos:
-                if o_dur < duration and o_top < ey_bot and o_bot > ey_top:
-                    text_y = max(text_y, o_bot + 4)
-            if text_y >= ey_bot - line_h:
-                continue  # No room for text
-
             summary = ev.get("summary", "")
             time_str = _ev_time_str(ev, now)
             avail_w = xr - xl - 8
             txt_x = xl + 10
 
+            # Build ordered list of lines to render
+            render_lines = []
             if summary and summary != "(No title)":
-                title_lines = _wrap_text_lines(draw, summary, event_font, avail_w)
-                y = text_y
-                for line in title_lines:
-                    if y + line_h > ey_bot - 8:
-                        break
-                    draw.text((txt_x, y), line, fill=BLACK, font=event_font)
-                    y += line_h
-                if time_str and y + line_h <= ey_bot:
+                for line in _wrap_text_lines(draw, summary, event_font, avail_w):
+                    render_lines.append((line, False))
+            if time_str:
+                if render_lines:
+                    render_lines.append(("", False))  # spacing from title
+                render_lines.append((time_str, True))
+
+            if not render_lines:
+                continue
+
+            # Collect overlap ranges from shorter events
+            overlap_ranges = []
+            for o_ev, o_top, o_bot, o_eh, o_dur, o_xl, o_xr in draw_infos:
+                if o_dur < duration and o_top < ey_bot and o_bot > ey_top:
+                    overlap_ranges.append((o_top, o_bot))
+
+            # Render each line, skipping y-positions fully inside overlap ranges
+            y = ey_top + 4
+            for text, is_time in render_lines:
+                if not text:
                     y += 4
-                    draw.text((txt_x, y), time_str, fill=BLACK, font=event_font)
-            elif time_str:
-                draw.text((txt_x, text_y), time_str, fill=BLACK, font=event_font)
+                    continue
+                # Find a safe y (not fully inside any overlap)
+                while True:
+                    blocked = False
+                    for o_top, o_bot in overlap_ranges:
+                        if y >= o_top and y + line_h <= o_bot:
+                            y = o_bot + 4
+                            blocked = True
+                            break
+                    if not blocked:
+                        break
+                    if y + line_h > ey_bot - 4:
+                        break
+                if y + line_h > ey_bot - 4:
+                    break  # No room
+                draw.text((txt_x, y), text, fill=BLACK, font=event_font)
+                y += line_h
 
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)
     for i in range(days):

@@ -433,7 +433,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
         dow = d.strftime("%a")
         dw = _text_w(draw, dow, dow_font)
-        draw.text((cx - dw // 2, grid_y - 68), dow, fill=GRAY_DARK, font=dow_font)
+        draw.text((cx - dw // 2, grid_y - 78), dow, fill=GRAY_DARK, font=dow_font)
 
         date_str = str(d.day)
         dw2 = _text_w(draw, date_str, date_font)

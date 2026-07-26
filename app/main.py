@@ -136,7 +136,7 @@ def background_loop():
             if not calendar_client.is_authenticated():
                 if not calendar_client.is_configured():
                     lan_ip = _get_lan_ip()
-                    img = render.render_setup_required(lan_ip, config.APP_PORT)
+                    img = render.render_setup_required(lan_ip, config.APP_PORT, ssl=config.SSL_ENABLED)
                     driver.render_to_screen(img, brightness=1.0)
                 # Show setup screen every 5 min
                 time.sleep(300)

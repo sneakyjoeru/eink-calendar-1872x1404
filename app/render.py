@@ -215,7 +215,7 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
             color = BLACK if in_month else GRAY_MID
             day_str = str(day_num.day)
             if is_today:
-                # Highlight today — full cell width, compact height around text + dotted border
+                # Highlight today — full cell width, compact height around text
                 bb = draw.textbbox((0, 0), day_str, font=cell_font)
                 tw = bb[2] - bb[0]
                 th = bb[3] - bb[1]
@@ -224,18 +224,15 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
                 rect_bot = y + 6 + bb[3] + pad
                 draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
-                # Dotted border along the rectangle edges (3px black dots, 6px gap)
+                # Dotted cell border — black dots on the cell outline for eye-catching
                 dot_step = 9
-                dot_r = 1
+                dot_r = 2  # 5px diameter for visibility
                 for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, rect_top - dot_r, x + dx + dot_r, rect_top + dot_r], fill=BLACK)
-                for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, rect_bot - dot_r, x + dx + dot_r, rect_bot + dot_r], fill=BLACK)
-                for dy in range(dot_step, rect_bot - rect_top - 2, dot_step):
-                    draw.ellipse([x + 1 - dot_r, rect_top + dy - dot_r, x + 1 + dot_r, rect_top + dy + dot_r], fill=BLACK)
-                for dy in range(dot_step, rect_bot - rect_top - 2, dot_step):
-                    draw.ellipse([x + col_w - 2 - dot_r, rect_top + dy - dot_r, x + col_w - 2 + dot_r, rect_top + dy + dot_r], fill=BLACK)
-                draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
+                    draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
+                    draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
+                for dy in range(dot_step, row_h - 2, dot_step):
+                    draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
+                    draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
 
@@ -342,7 +339,7 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
             is_today = day_num == today
             day_str = str(day_num.day)
             if is_today:
-                # Highlight today — full cell width, compact height + dotted border
+                # Highlight today — full cell width, compact height
                 bb = draw.textbbox((0, 0), day_str, font=cell_font)
                 th = bb[3] - bb[1]
                 pad = 3
@@ -350,17 +347,15 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
                 rect_bot = y + 6 + bb[3] + pad
                 draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
-                # Dotted border
+                # Dotted cell border — black dots on the cell outline
                 dot_step = 9
-                dot_r = 1
+                dot_r = 2
                 for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, rect_top - dot_r, x + dx + dot_r, rect_top + dot_r], fill=BLACK)
-                for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, rect_bot - dot_r, x + dx + dot_r, rect_bot + dot_r], fill=BLACK)
-                for dy in range(dot_step, rect_bot - rect_top - 2, dot_step):
-                    draw.ellipse([x + 1 - dot_r, rect_top + dy - dot_r, x + 1 + dot_r, rect_top + dy + dot_r], fill=BLACK)
-                for dy in range(dot_step, rect_bot - rect_top - 2, dot_step):
-                    draw.ellipse([x + col_w - 2 - dot_r, rect_top + dy - dot_r, x + col_w - 2 + dot_r, rect_top + dy + dot_r], fill=BLACK)
+                    draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
+                    draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
+                for dy in range(dot_step, row_h - 2, dot_step):
+                    draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
+                    draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)
 

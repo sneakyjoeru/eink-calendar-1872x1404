@@ -6,6 +6,7 @@ Exposes a settings web UI on the LAN for configuration.
 """
 import asyncio
 import datetime
+import json
 import logging
 import socket
 import threading
@@ -180,6 +181,7 @@ def do_render(force: bool = False) -> bool:
             day_start=settings["day_start"],
             day_end=settings["day_end"],
             max_full_day=settings["max_full_day_events"],
+            time_format=settings.get("time_format", "24h"),
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
@@ -358,6 +360,8 @@ async def settings_page():
     sel_month = "selected" if s["view_mode"] == "month" else ""
     sel_week = "selected" if s["view_mode"] == "week" else ""
     sel_7days = "selected" if s["view_mode"] == "7days" else ""
+    sel_24h = "selected" if s.get("time_format", "24h") == "24h" else ""
+    sel_12h = "selected" if s.get("time_format", "24h") == "12h" else ""
     tz = s.get("timezone", "")
 
     return _SETTINGS_HTML.format(
@@ -365,6 +369,8 @@ async def settings_page():
         sel_month=sel_month,
         sel_week=sel_week,
         sel_7days=sel_7days,
+        sel_24h=sel_24h,
+        sel_12h=sel_12h,
         day_start=s["day_start"],
         day_end=s["day_end"],
         max_fd=s["max_full_day_events"],
@@ -392,26 +398,20 @@ class SettingsUpdate(BaseModel):
 
 
 @app.post("/api/settings")
-async def update_settings(
-    view_mode: str = Form("week"),
-    day_start: str = Form("07:00"),
-    day_end: str = Form("23:00"),
-    max_full_day_events: int = Form(3),
-    time_line_interval_min: int = Form(15),
-    event_poll_interval_sec: int = Form(60),
-    brightness: float = Form(1.4),
-    timezone: str = Form(""),
-):
+async def update_settings(request: Request):
     """Save settings from form POST, trigger render, redirect back."""
+    fd = await request.form()
     data = {
-        "view_mode": view_mode,
-        "day_start": day_start,
-        "day_end": day_end,
-        "max_full_day_events": max_full_day_events,
-        "time_line_interval_min": time_line_interval_min,
-        "event_poll_interval_sec": event_poll_interval_sec,
-        "brightness": brightness,
-        "timezone": timezone,
+        "view_mode": fd.get("view_mode", "week"),
+        "day_start": fd.get("day_start", "07:00"),
+        "day_end": fd.get("day_end", "23:00"),
+        "max_full_day_events": int(fd.get("max_full_day_events", 3)),
+        "time_line_interval_min": int(fd.get("time_line_interval_min", 15)),
+        "event_poll_interval_sec": int(fd.get("event_poll_interval_sec", 60)),
+        "brightness": float(fd.get("brightness", 1.4)),
+        "timezone": fd.get("timezone", ""),
+        "time_format": fd.get("time_format", "24h"),
+        "selected_calendars": fd.getlist("selected_calendars"),
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
     settings_store.update(data)
@@ -601,9 +601,14 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     </label>
     <label>Timezone
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP" style="font-size:0.85em">
-      <span style="font-size:0.75em;color:#666">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3, +1.5, -4)</span>
+      <span style="font-size:0.75em;color:#666">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3)</span>
     </label>
-  </form>
+    <label>Time Format
+      <select name="time_format">
+        <option value="24h" {sel_24h}>24-hour (07:00)</option>
+        <option value="12h" {sel_12h}>12-hour (7:00 AM)</option>
+      </select>
+    </label>
 </div>
 
 <div class="card">
@@ -616,6 +621,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 <button type="submit" class="btn btn-primary">💾 Save &amp; Render</button>
 <a href="/api/render" class="btn btn-primary" style="background:#0f3460;margin-top:8px;display:block;text-align:center">🔄 Render Now</a>
 <p id="saveStatus"></p>
+</form>
 
 <div class="footer">
   E-Ink Calendar · {lan_ip}:{port} · 1872×1404 IT8951

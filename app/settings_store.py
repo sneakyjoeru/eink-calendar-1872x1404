@@ -16,6 +16,7 @@ _DEFAULTS = {
     "event_poll_interval_sec": 60,# seconds between event polls
     "brightness": 1.4,            # gamma boost for e-ink
     "timezone": "",               # IANA timezone, empty = system default
+    "time_format": "24h",         # "24h" or "12h"
 }
 
 _lock = threading.Lock()

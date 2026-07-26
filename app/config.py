@@ -34,6 +34,7 @@ SSL_KEY = os.environ.get("SSL_KEY", str(SSL_DIR / "key.pem"))
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "config/client_secret.json")
 GOOGLE_TOKEN_FILE = str(CONFIG_DIR / "token.json")
 GOOGLE_SCOPES = [
+    "openid",
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
 ]

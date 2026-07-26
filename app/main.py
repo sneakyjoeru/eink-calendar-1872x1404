@@ -347,11 +347,11 @@ async def auth_start(request: Request):
 @app.post("/auth/exchange")
 async def auth_exchange(code: str = Form(...)):
     """Exchange an authorization code for tokens."""
-    ok = calendar_client.complete_auth(code)
+    ok, err = calendar_client.complete_auth(code)
     if ok:
         do_render(force=True)
         return {"ok": True}
-    return JSONResponse({"error": "Code exchange failed"}, status_code=400)
+    return JSONResponse({"error": err or "Code exchange failed"}, status_code=400)
 
 
 @app.get("/auth/callback")
@@ -359,7 +359,7 @@ async def auth_callback(code: str = ""):
     """Handle OAuth callback (direct redirect — may not work for LAN IPs).
     Also renders a page the user can copy the code from."""
     if code:
-        ok = calendar_client.complete_auth(code)
+        ok, _ = calendar_client.complete_auth(code)
         if ok:
             do_render(force=True)
             return RedirectResponse(url="/settings?auth=success")

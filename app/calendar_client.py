@@ -74,20 +74,24 @@ def start_auth(redirect_uri: str) -> str:
     return auth_url
 
 
-def complete_auth(code: str) -> bool:
-    """Complete the OAuth flow with the code from the callback."""
+def complete_auth(code: str) -> tuple[bool, str]:
+    """Complete the OAuth flow with the code from the callback.
+
+    Returns (True, "") on success, (False, error_message) on failure.
+    """
     global _creds, _flow
     if not _flow:
-        return False
+        return False, "No active OAuth flow. Click 'Login with Google' first."
     try:
         _flow.fetch_token(code=code)
         _creds = _flow.credentials
         _save_token(_creds)
         logger.info("Google OAuth completed successfully")
-        return True
+        return True, ""
     except Exception as e:
-        logger.error("OAuth code exchange failed: %s", e)
-        return False
+        msg = str(e).split("\n")[0][:200]
+        logger.error("OAuth code exchange failed: %s", msg)
+        return False, msg
 
 
 def logout() -> None:

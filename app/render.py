@@ -524,7 +524,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=GRAY_LIGHT, width=1)
 
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
-    dow_font = _font(30, bold=True)
+    dow_font = _font(40, bold=True)
     date_font = _font(40, bold=True)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)

@@ -561,7 +561,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         for idx, (ev, ey_top, ey_bot, eh, duration, s_min, e_min) in enumerate(ev_infos):
             # Find ALL overlapping events
             overlap_idxs = []
-            for j, (_, j_top, j_bot, _, _) in enumerate(ev_infos):
+            for j, (_, j_top, j_bot, _, _, _, _) in enumerate(ev_infos):
                 if j != idx and ey_top < j_bot and ey_bot > j_top:
                     overlap_idxs.append(j)
 

@@ -12,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Request, UploadFile
+from fastapi import FastAPI, Request, UploadFile, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -220,7 +220,19 @@ async def settings_page():
     if not configured:
         auth_section = '<div class="alert">⚠️ Google OAuth not configured. Place <code>client_secret.json</code> in <code>config/</code> and restart.</div>'
     elif not authenticated:
-        auth_section = f'<a class="btn btn-auth" href="/auth/start">🔐 Login with Google</a>'
+        auth_section = '''
+        <p style="margin-bottom:10px">Click below to get the authorization link, then paste the code back.</p>
+        <button class="btn btn-auth" onclick="startGoogleAuth()">🔐 Login with Google</button>
+        <div id="authFlow" style="display:none;margin-top:12px">
+          <p>1. Open this link in your browser:</p>
+          <p><a id="authUrl" href="#" target="_blank" style="word-break:break-all;color:#4285F4"></a></p>
+          <p style="margin-top:10px">2. Authorize, then <b>copy the full URL</b> from the address bar when the redirect fails.</p>
+          <p>3. Paste the code below:</p>
+          <input id="authCode" type="text" style="width:100%;padding:8px;margin-bottom:8px" placeholder="Paste authorization code here">
+          <button class="btn btn-primary" onclick="exchangeCode()">✓ Exchange Code</button>
+          <p id="authStatus" style="margin-top:8px;font-size:0.85em"></p>
+        </div>
+        '''
     else:
         auth_section = '<span class="badge badge-ok">✓ Google connected</span> <a class="btn btn-small" href="/auth/logout">Logout</a>'
 
@@ -288,26 +300,54 @@ async def status():
 
 # ---- Google OAuth routes ----
 
+# Google blocks IP addresses in redirect URIs. The workaround:
+# use http://localhost (allowed without HTTPS) and let the user
+# copy the authorization code from the failed redirect manually.
+
+_OAUTH_REDIRECT_URI = "http://localhost:8889/auth/callback"
+
+
 @app.get("/auth/start")
 async def auth_start(request: Request):
-    """Start Google OAuth flow."""
-    lan_ip = _get_lan_ip()
-    redirect_uri = f"{_scheme()}://{lan_ip}:{config.APP_PORT}/auth/callback"
+    """Start Google OAuth flow. Returns the authorization URL as JSON
+    — the user opens it, authorizes, and pastes the resulting code."""
     try:
-        auth_url = calendar_client.start_auth(redirect_uri)
-        return RedirectResponse(url=auth_url)
+        auth_url = calendar_client.start_auth(_OAUTH_REDIRECT_URI)
+        return {
+            "auth_url": auth_url,
+            "redirect_uri": _OAUTH_REDIRECT_URI,
+        }
     except FileNotFoundError as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@app.get("/auth/callback")
-async def auth_callback(code: str):
-    """Handle OAuth callback from Google."""
+@app.post("/auth/exchange")
+async def auth_exchange(code: str = Form(...)):
+    """Exchange an authorization code for tokens."""
     ok = calendar_client.complete_auth(code)
     if ok:
         do_render(force=True)
-        return RedirectResponse(url="/settings?auth=success")
-    return JSONResponse({"error": "OAuth failed"}, status_code=500)
+        return {"ok": True}
+    return JSONResponse({"error": "Code exchange failed"}, status_code=400)
+
+
+@app.get("/auth/callback")
+async def auth_callback(code: str = ""):
+    """Handle OAuth callback (direct redirect — may not work for LAN IPs).
+    Also renders a page the user can copy the code from."""
+    if code:
+        ok = calendar_client.complete_auth(code)
+        if ok:
+            do_render(force=True)
+            return RedirectResponse(url="/settings?auth=success")
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;padding:40px;background:#1a1a2e;color:#eee">
+    <h2>Authorization Code Received</h2>
+    <p>If the code below looks correct, copy it and go to the
+    <a href="/settings" style="color:#e94560">settings page</a> to paste it.</p>
+    <textarea rows="3" cols="60" readonly>{code}</textarea>
+    </body></html>
+    """.replace("{code}", code or "No code received"))
 
 
 @app.get("/auth/logout")
@@ -432,6 +472,46 @@ async function saveSettings() {{
 async function renderNow() {{
   const r = await fetch('/api/render', {{method: 'POST'}});
   if (r.ok) alert('Rendering...');
+}}
+async function startGoogleAuth() {{
+  const status = document.getElementById('authStatus');
+  status.textContent = 'Getting authorization link...';
+  try {{
+    const r = await fetch('/auth/start');
+    const data = await r.json();
+    if (data.auth_url) {{
+      document.getElementById('authUrl').href = data.auth_url;
+      document.getElementById('authUrl').textContent = data.auth_url;
+      document.getElementById('authFlow').style.display = 'block';
+      status.textContent = 'Open the link above in your browser, authorize, then paste the code.';
+    }} else {{
+      status.textContent = 'Error: ' + (data.error || 'Unknown');
+    }}
+  }} catch(e) {{
+    status.textContent = 'Error: ' + e.message;
+  }}
+}}
+async function exchangeCode() {{
+  const code = document.getElementById('authCode').value.trim();
+  if (!code) {{ alert('Paste the authorization code first'); return; }}
+  const status = document.getElementById('authStatus');
+  status.textContent = 'Exchanging code...';
+  try {{
+    const r = await fetch('/auth/exchange', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
+      body: 'code=' + encodeURIComponent(code),
+    }});
+    if (r.ok) {{
+      status.textContent = '✓ Connected! Refreshing...';
+      setTimeout(() => location.reload(), 1000);
+    }} else {{
+      const err = await r.json();
+      status.textContent = 'Error: ' + (err.error || 'Exchange failed');
+    }}
+  }} catch(e) {{
+    status.textContent = 'Error: ' + e.message;
+  }}
 }}
 </script>
 </body>

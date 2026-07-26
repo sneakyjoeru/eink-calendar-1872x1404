@@ -512,6 +512,7 @@ def render_setup_required(lan_ip: str, port: int, ssl: bool = False) -> Image.Im
     Uses 3x supersampling + LANCZOS downscale for smooth antialiased text,
     matching the C IT8951 driver's text rendering technique.
     """
+    redirect_uri = "http://localhost:8889/auth/callback"
     scheme = "https" if ssl else "http"
     scale = 3
     sw, sh = W * scale, H * scale
@@ -543,7 +544,7 @@ def render_setup_required(lan_ip: str, port: int, ssl: bool = False) -> Image.Im
         ("text", "Enable Google Calendar API"),
         ("text", "Credentials > Create > OAuth client ID"),
         ("text", "Type: Web application"),
-        ("text", f"Redirect URI: {scheme}://{lan_ip}:{port}/auth/callback"),
+        ("text", f"Redirect URI: {redirect_uri}"),
         ("text", "Download client_secret.json"),
         ("blank", ""),
         ("step", "2. Upload to Pi"),

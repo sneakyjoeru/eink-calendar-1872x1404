@@ -54,13 +54,13 @@ def _text_h(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     return bbox[3] - bbox[1]
 
 
-# ---- Color helpers (grayscale for e-ink: 0=black, 255=white) ----
-WHITE = 255
-BLACK = 0
-GRAY_DARK = 60
-GRAY_MID = 120
-GRAY_LIGHT = 200
-GRAY_VLIGHT = 254
+# ---- Color helpers (grayscale for e-ink: (0,0,0)=black, (255,255,255)=white) ----
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY_DARK = (60, 60, 60)
+GRAY_MID = (120, 120, 120)
+GRAY_LIGHT = (200, 200, 200)
+GRAY_VLIGHT = (254, 254, 254)
 
 
 def render_calendar(view_mode: str, events: list[dict],
@@ -317,7 +317,7 @@ def _render_35days(draw, events, now, max_full_day):
                 rx = x + 10 - pad
                 ry = y + 6 - pad
                 draw.rectangle([rx, ry, rx + tw + pad * 2, ry + th + pad * 2], fill=BLACK)
-                draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
+                draw.text((x + 10, y + 6), day_str, fill=WHITE, font=cell_font)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)
 
@@ -404,7 +404,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             tx = cx - dw2 // 2
             ty = grid_y - 20
             draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
-            draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
+            draw.text((tx, ty), date_str, fill=WHITE, font=date_font)
         else:
             draw.text((cx - dw2 // 2, grid_y - 22), date_str, fill=color, font=date_font)
 

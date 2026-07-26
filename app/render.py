@@ -155,7 +155,7 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
     total_days = start_weekday + last_day
     num_weeks = math.ceil(total_days / 7)
 
-    grid_x = 25  # moved left by 10mm total
+    grid_x = 19  # moved left by 11mm total
     grid_y = HEADER_H + 10
     grid_w = W - grid_x - RIGHT_PAD
     grid_h = H - grid_y - FOOTER_H
@@ -296,7 +296,7 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
     start_date = today - datetime.timedelta(days=today.weekday())
     num_weeks = 5
 
-    grid_x = 25  # moved left by 10mm total
+    grid_x = 19  # moved left by 11mm total
     grid_y = HEADER_H + 10
     grid_w = W - grid_x - RIGHT_PAD
     grid_h = H - grid_y - FOOTER_H

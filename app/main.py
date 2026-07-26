@@ -288,11 +288,12 @@ async def index():
 
 
 @app.get("/settings", response_class=HTMLResponse)
-async def settings_page():
+async def settings_page(request: Request):
     """Settings web UI."""
     s = settings_store.load()
     authenticated = calendar_client.is_authenticated()
     configured = calendar_client.is_configured()
+    saved = request.query_params.get("saved") == "1"
     lan_ip = _get_lan_ip()
 
     cals = []
@@ -365,6 +366,7 @@ async def settings_page():
     tz = s.get("timezone", "")
 
     return _SETTINGS_HTML.format(
+        saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
         auth_section=auth_section,
         sel_month=sel_month,
         sel_week=sel_week,
@@ -415,7 +417,7 @@ async def update_settings(request: Request):
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
     settings_store.update(data)
-    return RedirectResponse(url="/settings", status_code=303)
+    return RedirectResponse(url="/settings?saved=1", status_code=303)
 
 
 @app.get("/api/render")
@@ -566,6 +568,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 </head>
 <body>
 <h1>📅 E-Ink Calendar</h1>
+{saved_html}
 
 <div class="card">
   <h2>Google Account</h2>

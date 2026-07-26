@@ -114,7 +114,7 @@ def _get_service():
     try:
         from google_auth_httplib2 import AuthorizedHttp
         import httplib2
-        http = AuthorizedHttp(credentials=_creds, http=httplib2.Http(timeout=15))
+        http = AuthorizedHttp(credentials=_creds, http=httplib2.Http(timeout=5))
         return build("calendar", "v3", http=http, static_discovery=False)
     except ImportError:
         return build("calendar", "v3", credentials=_creds, static_discovery=False)

@@ -97,7 +97,8 @@ def render_calendar(view_mode: str, events: list[dict],
     elif view_mode == "35days":
         _render_35days(draw, events, now, max_full_day, date_format=date_format, dim_past_events=dim_past_events)
     elif view_mode == "7days":
-        _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
+        week_num = now.isocalendar()[1]
+        _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format, week_num=week_num,
                       crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
     else:  # week (default)
         _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
@@ -107,11 +108,11 @@ def render_calendar(view_mode: str, events: list[dict],
     if view_mode in ("week", "7days"):
         _draw_time_line(draw, now, view_mode, day_start, day_end, events)
 
-    # Settings URL (top center of screen)
+    # Settings URL (same line as subtitle, centered)
     if settings_url:
-        url_font = _font(20)
+        url_font = _font(28)
         uw = _text_w(draw, settings_url, url_font)
-        draw.text(((W - uw) // 2, 4), settings_url, fill=GRAY_MID, font=url_font)
+        draw.text(((W - uw) // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
     return img
 
@@ -430,13 +431,13 @@ def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_f
 
 
 # ---- 7-days view (next 7 days starting today) ----
-def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False):
+def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, week_num=None):
     """7-days view — starting from today, 7 consecutive day columns."""
     if date_format:
         title = now.strftime(date_format)
     else:
         title = "Next 7 Days"
-    _draw_header(draw, title, now.strftime("%a %b %d"))
+    _draw_header(draw, title, f"Week {week_num}" if week_num else now.strftime("%a %b %d"))
 
     _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format,
                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
@@ -536,7 +537,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         dow = d.strftime("%a")
         date_str = str(d.day)
         if is_before_day and d == today:
-            date_str = str(d.day) + " "  # shift left when indicator at top edge
+            date_str = str(d.day) + "  "  # shift left when indicator at top edge
 
         dw = _text_w(draw, dow, dow_font)
         dw2 = _text_w(draw, date_str, date_font)
@@ -831,7 +832,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
             draw.rectangle([sx, y - 4, sx + stripe_w, y + 4], fill=BLACK)
         # Time label pill
         time_str = now.strftime("%H:%M")
-        label_font = _font(18)
+        label_font = _font(18, bold=True)
         lw = _text_w(draw, time_str, label_font)
         draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
         draw.text((x_end - lw - 4, y - 11), time_str, fill=BLACK, font=label_font)
@@ -845,7 +846,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
             draw.rectangle([sx, y - 4, sx + stripe_w, y + 4], fill=BLACK)
         # Time label pill
         time_str = now.strftime("%H:%M")
-        label_font = _font(18)
+        label_font = _font(18, bold=True)
         lw = _text_w(draw, time_str, label_font)
         draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
         draw.text((x_end - lw - 4, y - 11), time_str, fill=BLACK, font=label_font)
@@ -863,7 +864,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
 
     # Small time label at the right edge of the line
     time_str = now.strftime("%H:%M")
-    label_font = _font(18)
+    label_font = _font(18, bold=True)
     lw = _text_w(draw, time_str, label_font)
     # Background pill
     draw.rectangle([x_end - lw - 8, y - 12, x_end, y + 12], fill=WHITE, outline=BLACK, width=1)

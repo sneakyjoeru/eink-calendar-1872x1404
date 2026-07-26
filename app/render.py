@@ -462,8 +462,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         if lw > max_label_w:
             max_label_w = lw
 
-    left_margin = max(MARGIN, max_label_w + 24)  # dynamic left margin for hour labels
-    label_rpad = 8  # gap between label right edge and grid
+    left_margin = max(60, max_label_w + 14)  # dynamic left margin for hour labels
+    label_rpad = 6  # gap between label right edge and grid
     grid_x = left_margin
     grid_y = HEADER_H + 50  # Leave room for full-day event strip
     grid_w = W - left_margin - RIGHT_PAD

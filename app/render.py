@@ -442,8 +442,9 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             th = _text_h(draw, date_str, date_font)
             pad = 3
             tx = cx - dw2 // 2
-            ty = grid_y - 29
-            draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
+            ty = grid_y - 26
+            bb = draw.textbbox((0, 0), date_str, font=date_font)
+            draw.rectangle([tx - pad, ty + bb[1] - pad, tx + tw + pad, ty + bb[3] + pad], fill=BLACK)
             draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
         else:
             draw.text((cx - dw2 // 2, grid_y - 29), date_str, fill=color, font=date_font)

@@ -563,8 +563,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             bb_dow = draw.textbbox((0, 0), dow, font=dow_font)
             bb_date = draw.textbbox((0, 0), date_str, font=date_font)
             pad = 4
-            line_y = 110 - min(bb_dow[1], bb_date[1]) + pad
-            rect_top = 110
+            line_y = grid_y - 44  # same baseline as other days
+            rect_top = 110  # box touches header line
             rect_bot = line_y + max(bb_dow[3], bb_date[3]) + pad
             draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
             draw.text((line_x, line_y), dow, fill=WHITE, font=dow_font)
@@ -850,7 +850,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
         label_font = _font(26, bold=True)
         lw = _text_w(draw, time_str, label_font)
         draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
-        draw.text((x_end - lw - 4, y - 11), time_str, fill=BLACK, font=label_font)
+        draw.text((x_end - lw - 4, y - 15), time_str, fill=BLACK, font=label_font)
         return
 
     if now_min > de_min:
@@ -864,7 +864,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
         label_font = _font(26, bold=True)
         lw = _text_w(draw, time_str, label_font)
         draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
-        draw.text((x_end - lw - 4, y - 11), time_str, fill=BLACK, font=label_font)
+        draw.text((x_end - lw - 4, y - 15), time_str, fill=BLACK, font=label_font)
         return
 
     y = grid_y + (now_min - ds_min) * minute_h
@@ -883,7 +883,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
     lw = _text_w(draw, time_str, label_font)
     # Background pill
     draw.rectangle([x_end - lw - 10, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
-    draw.text((x_end - lw - 6, y - 13), time_str, fill=BLACK, font=label_font)
+    draw.text((x_end - lw - 6, y - 17), time_str, fill=BLACK, font=label_font)
 
 
 # ---- QR code screen (initial setup) ----

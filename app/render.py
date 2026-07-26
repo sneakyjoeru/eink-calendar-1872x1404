@@ -519,7 +519,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
     dow_font = _font(30, bold=True)
-    date_font = _font(24)
+    date_font = _font(28, bold=True)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
@@ -527,22 +527,28 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
         dow = d.strftime("%a")
         dw = _text_w(draw, dow, dow_font)
-        draw.text((cx - dw // 2, grid_y - 58), dow, fill=GRAY_DARK, font=dow_font)
+        dow_x = cx - dw // 2
+        dow_y = grid_y - 58
 
         date_str = str(d.day)
         dw2 = _text_w(draw, date_str, date_font)
-        color = BLACK
+        date_x = cx - dw2 // 2
+        date_y = grid_y - 30
+
         if d == today:
-            tw = _text_w(draw, date_str, date_font)
-            th = _text_h(draw, date_str, date_font)
-            pad = 3
-            tx = cx - dw2 // 2
-            ty = grid_y - 26
-            bb = draw.textbbox((0, 0), date_str, font=date_font)
-            draw.rectangle([tx - pad, ty + bb[1] - pad, tx + tw + pad, ty + bb[3] + pad], fill=BLACK)
-            draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
+            bb_dow = draw.textbbox((0, 0), dow, font=dow_font)
+            bb_date = draw.textbbox((0, 0), date_str, font=date_font)
+            pad = 4
+            rect_top = dow_y + bb_dow[1] - pad
+            rect_bot = date_y + bb_date[3] + pad
+            rect_left = min(dow_x, date_x) - pad
+            rect_right = max(dow_x + dw, date_x + dw2) + pad
+            draw.rectangle([rect_left, rect_top, rect_right, rect_bot], fill=BLACK)
+            draw.text((dow_x, dow_y), dow, fill=WHITE, font=dow_font)
+            draw.text((date_x, date_y), date_str, fill=WHITE, font=date_font)
         else:
-            draw.text((cx - dw2 // 2, grid_y - 29), date_str, fill=color, font=date_font)
+            draw.text((dow_x, dow_y), dow, fill=GRAY_DARK, font=dow_font)
+            draw.text((date_x, date_y), date_str, fill=BLACK, font=date_font)
 
     # Timed events
     timed_events_by_date: dict[datetime.date, list[dict]] = {}

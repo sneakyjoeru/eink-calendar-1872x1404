@@ -439,7 +439,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
 
 
 # ---- QR code screen (initial setup) ----
-def render_qr_setup(qr_url: str, lan_ip: str, port: int) -> Image.Image:
+def render_qr_setup(qr_url: str, scheme: str, lan_ip: str, port: int) -> Image.Image:
     """Render the initial-setup screen: QR code + LAN IP:port below it."""
     import qrcode
 
@@ -479,7 +479,7 @@ def render_qr_setup(qr_url: str, lan_ip: str, port: int) -> Image.Image:
               stroke_width=2, stroke_fill=BLACK)
 
     url_font = _font(28)
-    url_text = f"http://{lan_ip}:{port}/settings"
+    url_text = f"{scheme}://{lan_ip}:{port}/settings"
     uw = _text_w(draw, url_text, url_font)
     draw.text(((W - uw) // 2, qr_y + qr_size + 110), url_text, fill=GRAY_DARK, font=url_font,
               stroke_width=2, stroke_fill=GRAY_DARK)

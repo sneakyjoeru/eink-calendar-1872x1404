@@ -109,8 +109,9 @@ def render_setup_screen() -> bool:
     """Show QR code + LAN IP on the e-ink for initial setup."""
     lan_ip = _get_lan_ip()
     port = config.APP_PORT
-    url = f"{_scheme()}://{lan_ip}:{port}/settings"
-    img = render.render_qr_setup(url, lan_ip, port)
+    scheme = _scheme()
+    url = f"{scheme}://{lan_ip}:{port}/settings"
+    img = render.render_qr_setup(url, scheme, lan_ip, port)
     return driver.render_to_screen(img, brightness=1.0)
 
 
@@ -223,9 +224,17 @@ async def settings_page():
     else:
         auth_section = '<span class="badge badge-ok">✓ Google connected</span> <a class="btn btn-small" href="/auth/logout">Logout</a>'
 
+    # Pre-compute selected attribute for each view mode (can't use Python
+    # expressions in str.format() templates)
+    sel_month = "selected" if s["view_mode"] == "month" else ""
+    sel_week = "selected" if s["view_mode"] == "week" else ""
+    sel_7days = "selected" if s["view_mode"] == "7days" else ""
+
     return _SETTINGS_HTML.format(
         auth_section=auth_section,
-        view_mode=s["view_mode"],
+        sel_month=sel_month,
+        sel_week=sel_week,
+        sel_7days=sel_7days,
         day_start=s["day_start"],
         day_end=s["day_end"],
         max_fd=s["max_full_day_events"],
@@ -358,9 +367,9 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
   <form id="settingsForm">
     <label>View Mode
       <select name="view_mode">
-        <option value="month" {'selected' if view_mode=='month' else ''}>Month</option>
-        <option value="week" {'selected' if view_mode=='week' else ''}>Week</option>
-        <option value="7days" {'selected' if view_mode=='7days' else ''}>7 Days (from today)</option>
+        <option value="month" {sel_month}>Month</option>
+        <option value="week" {sel_week}>Week</option>
+        <option value="7days" {sel_7days}>7 Days (from today)</option>
       </select>
     </label>
     <div class="row">

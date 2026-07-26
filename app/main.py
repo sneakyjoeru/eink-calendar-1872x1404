@@ -684,10 +684,10 @@ network={{
 # ---- Google OAuth routes ----
 
 # Google blocks IP addresses in redirect URIs. The workaround:
-# use http://localhost (allowed without HTTPS) and let the user
-# copy the authorization code from the failed redirect manually.
+# use https://localhost (allowed for OAuth) so the redirect URL
+# carries the auth code visible in the address bar for copying.
 
-_OAUTH_REDIRECT_URI = "http://localhost:8889/auth/callback"
+_OAUTH_REDIRECT_URI = "https://localhost:8889/auth/callback"
 
 
 @app.get("/auth/start")

@@ -446,9 +446,27 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         # Start from Monday of current week
         start_date = today - datetime.timedelta(days=today.weekday())
 
-    grid_x = MARGIN
+    # Hour lines + labels — measure widest label first for dynamic left margin
+    hour_font = _font(26)
+    max_label_w = 0
+    for h in range(ds_h, de_h + 1):
+        if time_format == "12h":
+            ampm = "AM" if h < 12 else "PM"
+            h12 = h % 12
+            if h12 == 0:
+                h12 = 12
+            label = f"{h12} {ampm}"
+        else:
+            label = f"{h:02d}:00"
+        lw = _text_w(draw, label, hour_font)
+        if lw > max_label_w:
+            max_label_w = lw
+
+    left_margin = max(MARGIN, max_label_w + 24)  # dynamic left margin for hour labels
+    label_rpad = 8  # gap between label right edge and grid
+    grid_x = left_margin
     grid_y = HEADER_H + 50  # Leave room for full-day event strip
-    grid_w = W - MARGIN - RIGHT_PAD
+    grid_w = W - left_margin - RIGHT_PAD
     grid_h = H - grid_y - FOOTER_H
 
     col_w = grid_w // days
@@ -474,7 +492,6 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                    outline=GRAY_LIGHT, width=1)
 
     # Hour lines + labels
-    hour_font = _font(26)
     for h in range(ds_h, de_h + 1):
         y = grid_y + (h * 60 - ds_min) * minute_h
         if y > grid_y + grid_h:
@@ -488,7 +505,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             label = f"{h12} {ampm}"
         else:
             label = f"{h:02d}:00"
-        draw.text((grid_x - 70, y - 14), label, fill=GRAY_MID, font=hour_font)
+        draw.text((grid_x - max_label_w - label_rpad, y - 14), label, fill=GRAY_MID, font=hour_font)
 
     # Column separators
     for i in range(1, days):

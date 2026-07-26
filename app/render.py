@@ -60,7 +60,8 @@ BLACK = (0, 0, 0)
 GRAY_DARK = (60, 60, 60)
 GRAY_MID = (120, 120, 120)
 GRAY_LIGHT = (200, 200, 200)
-GRAY_VLIGHT = (254, 254, 254)
+GRAY_VLIGHT = (223, 223, 223)
+GRAY_HOUR_LINE = (170, 170, 170)
 
 
 def render_calendar(view_mode: str, events: list[dict],
@@ -444,7 +445,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         y = grid_y + (h * 60 - ds_min) * minute_h
         if y > grid_y + grid_h:
             break
-        draw.line([(grid_x, y), (grid_x + days * col_w, y)], fill=GRAY_VLIGHT, width=1)
+        draw.line([(grid_x, y), (grid_x + days * col_w, y)], fill=GRAY_HOUR_LINE, width=1)
         if time_format == "12h":
             ampm = "AM" if h < 12 else "PM"
             h12 = h % 12

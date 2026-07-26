@@ -764,7 +764,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     <label>View Mode
       <select name="view_mode">
         <option value="month" {sel_month}>Month</option>
-        <option value="35days" {sel_35days}>Month (35 days)</option>
+        <option value="35days" {sel_35days}>Month (5 weeks)</option>
         <option value="week" {sel_week}>Week</option>
         <option value="7days" {sel_7days}>7 Days (from today)</option>
       </select>

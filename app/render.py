@@ -664,7 +664,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)
     fd_font = _font(24)
     fd_h = 26  # bar height
-    fd_step = 30  # vertical spacing
+    fd_step = fd_h  # no gap between stacked events
     fd_top = HEADER_H - 8  # top event's ey so its top edge touches the header separator line
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)

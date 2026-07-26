@@ -433,7 +433,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
         dow = d.strftime("%a")
         dw = _text_w(draw, dow, dow_font)
-        draw.text((cx - dw // 2, grid_y - 78), dow, fill=GRAY_DARK, font=dow_font)
+        draw.text((cx - dw // 2, grid_y - 58), dow, fill=GRAY_DARK, font=dow_font)
 
         date_str = str(d.day)
         dw2 = _text_w(draw, date_str, date_font)
@@ -443,11 +443,11 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             th = _text_h(draw, date_str, date_font)
             pad = 3
             tx = cx - dw2 // 2
-            ty = grid_y - 34
+            ty = grid_y - 24
             draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
             draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
         else:
-            draw.text((cx - dw2 // 2, grid_y - 36), date_str, fill=color, font=date_font)
+            draw.text((cx - dw2 // 2, grid_y - 24), date_str, fill=color, font=date_font)
 
     # Grid border
     draw.rectangle([grid_x, grid_y, grid_x + days * col_w - 1, grid_y + grid_h - 1],

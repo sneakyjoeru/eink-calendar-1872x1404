@@ -60,7 +60,7 @@ BLACK = 0
 GRAY_DARK = 60
 GRAY_MID = 120
 GRAY_LIGHT = 200
-GRAY_VLIGHT = 248
+GRAY_VLIGHT = 252
 
 
 def render_calendar(view_mode: str, events: list[dict],

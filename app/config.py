@@ -16,8 +16,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = BASE_DIR / "config"
 TMP_DIR = BASE_DIR / "tmp_render"
 
-# IT8951 C driver binary
-IT8951_BINARY = os.environ.get("IT8951_BINARY", "/home/orangepi/it8951-epaper-c/it8951")
+# IT8951 C driver binary (bundled in bin/)
+IT8951_BINARY = os.environ.get("IT8951_BINARY", "/opt/eink-calendar/bin/it8951")
 
 # App server
 APP_HOST = os.environ.get("APP_HOST", "0.0.0.0")

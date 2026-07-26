@@ -450,12 +450,14 @@ def render_qr_setup(qr_url: str, lan_ip: str, port: int) -> Image.Image:
     title_font = _font(48, bold=True)
     title = "E-Ink Calendar Setup"
     tw = _text_w(draw, title, title_font)
-    draw.text(((W - tw) // 2, 80), title, fill=BLACK, font=title_font)
+    draw.text(((W - tw) // 2, 80), title, fill=BLACK, font=title_font,
+              stroke_width=2, stroke_fill=BLACK)
 
     subtitle_font = _font(28)
     subtitle = "Scan QR code or visit the URL below"
     sw = _text_w(draw, subtitle, subtitle_font)
-    draw.text(((W - sw) // 2, 150), subtitle, fill=GRAY_DARK, font=subtitle_font)
+    draw.text(((W - sw) // 2, 150), subtitle, fill=GRAY_DARK, font=subtitle_font,
+              stroke_width=2, stroke_fill=GRAY_DARK)
 
     # QR code (centered)
     qr = qrcode.QRCode(version=1, box_size=12, border=2,
@@ -473,12 +475,14 @@ def render_qr_setup(qr_url: str, lan_ip: str, port: int) -> Image.Image:
     ip_font = _font(56, bold=True)
     ip_text = f"{lan_ip}:{port}"
     iw = _text_w(draw, ip_text, ip_font)
-    draw.text(((W - iw) // 2, qr_y + qr_size + 40), ip_text, fill=BLACK, font=ip_font)
+    draw.text(((W - iw) // 2, qr_y + qr_size + 40), ip_text, fill=BLACK, font=ip_font,
+              stroke_width=2, stroke_fill=BLACK)
 
     url_font = _font(28)
     url_text = f"http://{lan_ip}:{port}/settings"
     uw = _text_w(draw, url_text, url_font)
-    draw.text(((W - uw) // 2, qr_y + qr_size + 110), url_text, fill=GRAY_DARK, font=url_font)
+    draw.text(((W - uw) // 2, qr_y + qr_size + 110), url_text, fill=GRAY_DARK, font=url_font,
+              stroke_width=2, stroke_fill=GRAY_DARK)
 
     return img
 
@@ -490,12 +494,14 @@ def render_status(message: str, submessage: str = "") -> Image.Image:
 
     font = _font(48, bold=True)
     mw = _text_w(draw, message, font)
-    draw.text(((W - mw) // 2, H // 2 - 40), message, fill=BLACK, font=font)
+    draw.text(((W - mw) // 2, H // 2 - 40), message, fill=BLACK, font=font,
+              stroke_width=2, stroke_fill=BLACK)
 
     if submessage:
         sub_font = _font(28)
         sw = _text_w(draw, submessage, sub_font)
-        draw.text(((W - sw) // 2, H // 2 + 30), submessage, fill=GRAY_DARK, font=sub_font)
+        draw.text(((W - sw) // 2, H // 2 + 30), submessage, fill=GRAY_DARK, font=sub_font,
+                  stroke_width=2, stroke_fill=GRAY_DARK)
 
     return img
 
@@ -514,7 +520,8 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
 
     # Title
     title_font = _font(64, bold=True)
-    draw.text((x, y), "Setup Required", fill=BLACK, font=title_font)
+    draw.text((x, y), "Setup Required", fill=BLACK, font=title_font,
+              stroke_width=2, stroke_fill=BLACK)
     y += 80
 
     # Separator
@@ -552,10 +559,12 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
         if kind == "blank":
             y += 16
         elif kind == "step":
-            draw.text((x, y), line, fill=BLACK, font=step_font)
+            draw.text((x, y), line, fill=BLACK, font=step_font,
+                      stroke_width=2, stroke_fill=BLACK)
             y += 64
         elif kind == "text":
-            draw.text((indent, y), line, fill=GRAY_DARK, font=text_font)
+            draw.text((indent, y), line, fill=GRAY_DARK, font=text_font,
+                      stroke_width=2, stroke_fill=GRAY_DARK)
             y += 54
         elif kind == "code":
             tw = _text_w(draw, line, code_font)
@@ -569,7 +578,8 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
                 display = display[:-1]
             if display != line:
                 display = display[:-1] + "…"
-            draw.text((indent, y + 4), display, fill=BLACK, font=code_font)
+            draw.text((indent, y + 4), display, fill=BLACK, font=code_font,
+                      stroke_width=2, stroke_fill=BLACK)
             y += 56
 
     return img

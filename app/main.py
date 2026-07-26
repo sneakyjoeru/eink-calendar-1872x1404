@@ -861,8 +861,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
   <p style="font-size:0.75em;color:#666;margin-top:8px;">Empty selection = all calendars</p>
 </div>
 
-<button type="submit" class="btn btn-primary">💾 Save</button>
-<a href="/api/render" class="btn btn-primary" style="background:#0f3460;margin-top:8px;display:block;text-align:center">🔄 Render Now</a>
+<button type="submit" class="btn btn-primary">💾 Save & Render</button>
 <p id="saveStatus"></p>
 </form>
 

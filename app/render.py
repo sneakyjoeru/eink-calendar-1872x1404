@@ -312,13 +312,8 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
             is_today = day_num == today
             day_str = str(day_num.day)
             if is_today:
-                # Highlight today with a filled rectangle (3px padding)
-                bb = draw.textbbox((0, 0), day_str, font=cell_font)
-                tw = bb[2] - bb[0]
-                pad = 3
-                rx = x + 10 - pad
-                ry = y + 6 + bb[1] - pad
-                draw.rectangle([rx, ry, rx + tw + pad * 2, ry + (bb[3] - bb[1]) + pad * 2], fill=BLACK)
+                # Highlight today — fill entire cell horizontally
+                draw.rectangle([x + 1, y + 6, x + col_w - 2, y + row_h - 2], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)

@@ -641,15 +641,14 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             label = ev.get("summary", "")
             if not label or label == "(No title)":
                 continue
-            label = label[:15]
             fd_font = _font(20)
-            if _text_w(draw, label + "…", fd_font) > col_w - 8:
-                while len(label) > 2 and _text_w(draw, label + "…", fd_font) > col_w - 8:
-                    label = label[:-1]
-                label += "…"
+            avail_fd_w = col_w - 8
+            # Wrap instead of simple truncation
+            wrapped = _wrap_text_lines(draw, label, fd_font, avail_fd_w)
+            display = wrapped[0] if wrapped else label[:15]
             draw.rounded_rectangle([x + 4, ey - 2, x + col_w - 4, ey + 22], radius=6,
                                    fill=GRAY_VLIGHT, outline=BLACK, width=2)
-            draw.text((x + 8, ey - 1), label, fill=BLACK, font=fd_font)
+            draw.text((x + 8, ey - 1), display, fill=BLACK, font=fd_font)
 
 
 def _wrap_text_lines(draw, text, font, max_w):

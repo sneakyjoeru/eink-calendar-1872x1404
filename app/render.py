@@ -67,6 +67,8 @@ GRAY_HOUR_LINE = (170, 170, 170)
 def render_calendar(view_mode: str, events: list[dict],
                     day_start: str, day_end: str,
                     max_full_day: int, time_format: str = "24h",
+                    date_format: str = "",
+                    settings_url: str = "",
                     now: Optional[datetime.datetime] = None) -> Image.Image:
     """Render the full calendar view to a PIL Image.
 
@@ -86,13 +88,19 @@ def render_calendar(view_mode: str, events: list[dict],
     elif view_mode == "35days":
         _render_35days(draw, events, now, max_full_day)
     elif view_mode == "7days":
-        _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format)
+        _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format)
     else:  # week (default)
-        _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format)
+        _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format)
 
     # Draw current-time line on week/7days views
     if view_mode in ("week", "7days"):
         _draw_time_line(draw, now, view_mode, day_start, day_end, events)
+
+    # Settings URL footer (bottom center of screen)
+    if settings_url:
+        url_font = _font(22)
+        uw = _text_w(draw, settings_url, url_font)
+        draw.text(((W - uw) // 2, H - FOOTER_H + 4), settings_url, fill=GRAY_MID, font=url_font)
 
     return img
 
@@ -345,25 +353,25 @@ def _render_35days(draw, events, now, max_full_day):
     # Month separator line
     _draw_month_separator(draw, start_date, today, num_weeks,
                           grid_x, grid_y, col_w, row_h)
-def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h"):
+def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format=""):
     """Week view — 7 day columns with timed events stacked vertically."""
     title = now.strftime("%B %d, %Y")
     week_num = now.isocalendar()[1]
     _draw_header(draw, title, f"Week {week_num}")
 
-    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7)
+    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, date_format=date_format)
 
 
 # ---- 7-days view (next 7 days starting today) ----
-def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h"):
+def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format=""):
     """7-days view — starting from today, 7 consecutive day columns."""
     title = "Next 7 Days"
     _draw_header(draw, title, now.strftime("%a %b %d"))
 
-    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True)
+    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format)
 
 
-def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False):
+def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format=""):
     """Shared day-grid renderer for week and 7-days views."""
     today = now.date()
 
@@ -434,7 +442,10 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         dw = _text_w(draw, dow, dow_font)
         draw.text((cx - dw // 2, grid_y - 58), dow, fill=GRAY_DARK, font=dow_font)
 
-        date_str = str(d.day)
+        if date_format:
+            date_str = d.strftime(date_format)
+        else:
+            date_str = str(d.day)
         dw2 = _text_w(draw, date_str, date_font)
         color = BLACK
         if d == today:

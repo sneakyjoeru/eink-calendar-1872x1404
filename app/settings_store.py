@@ -17,6 +17,7 @@ _DEFAULTS = {
     "brightness": 1.4,            # gamma boost for e-ink
     "timezone": "",               # IANA timezone, empty = system default
     "time_format": "24h",         # "24h" or "12h"
+    "date_format": "",            # strftime format for dates (empty = day number)
 }
 
 _lock = threading.RLock()

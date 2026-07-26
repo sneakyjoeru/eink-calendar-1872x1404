@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 
-from . import config, settings_store, driver, calendar_client, render
+from . import config, settings_store, driver, calendar_client, render, wifi_setup
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("eink.main")
@@ -186,6 +186,8 @@ def do_render(force: bool = False) -> bool:
             day_end=settings["day_end"],
             max_full_day=settings["max_full_day_events"],
             time_format=settings.get("time_format", "24h"),
+            date_format=settings.get("date_format", ""),
+            settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
@@ -284,6 +286,9 @@ async def startup():
     t = threading.Thread(target=background_loop, daemon=True)
     t.start()
 
+    # Start WiFi connectivity monitor (hotspot fallback)
+    wifi_setup.start_monitor(interval=120)
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -369,6 +374,7 @@ async def settings_page(request: Request):
     sel_24h = "selected" if s.get("time_format", "24h") == "24h" else ""
     sel_12h = "selected" if s.get("time_format", "24h") == "12h" else ""
     tz = s.get("timezone", "")
+    date_fmt = s.get("date_format", "")
 
     return _SETTINGS_HTML.format(
         saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
@@ -386,6 +392,7 @@ async def settings_page(request: Request):
         poll_interval=s["event_poll_interval_sec"],
         brightness=s.get("brightness", 1.4),
         timezone=tz,
+        date_fmt=date_fmt,
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
         lan_ip=lan_ip,
@@ -403,6 +410,7 @@ class SettingsUpdate(BaseModel):
     event_poll_interval_sec: Optional[int] = None
     brightness: Optional[float] = None
     timezone: Optional[str] = None
+    date_format: Optional[str] = None
 
 
 @app.post("/api/settings")
@@ -419,6 +427,7 @@ async def update_settings(request: Request):
         "brightness": float(fd.get("brightness", 1.4)),
         "timezone": fd.get("timezone", ""),
         "time_format": fd.get("time_format", "24h"),
+        "date_format": fd.get("date_format", ""),
         "selected_calendars": fd.getlist("selected_calendars"),
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
@@ -476,6 +485,162 @@ async def upload_secret(file: UploadFile = File(...)):
     except Exception as e:
         logger.error("Upload failed: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ---- WiFi setup routes ----
+
+_WIFI_SETUP_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E-Ink Calendar — WiFi Setup</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+       background: #1a1a2e; color: #eee; padding: 20px; max-width: 600px; margin: 0 auto; }}
+h1 {{ font-size: 1.3em; margin-bottom: 12px; text-align: center; }}
+.card {{ background: #16213e; border-radius: 12px; padding: 20px; margin-bottom: 16px; }}
+.card h2 {{ font-size: 1em; margin-bottom: 10px; color: #e94560; }}
+label {{ display: block; margin-bottom: 8px; font-size: 0.9em; }}
+input[type="text"], input[type="password"] {{ width: 100%; padding: 8px; border-radius: 6px;
+  border: 1px solid #333; background: #0f3460; color: #eee; font-size: 0.9em; }}
+.btn {{ display: inline-block; padding: 10px 20px; border-radius: 8px;
+  border: none; cursor: pointer; font-size: 0.9em; text-align: center; }}
+.btn-primary {{ background: #e94560; color: white; width: 100%; margin-top: 12px; }}
+.btn-small {{ background: #333; color: #eee; font-size: 0.8em; padding: 6px 12px; }}
+.network-list {{ list-style: none; }}
+.network-list li {{ padding: 8px; margin: 4px 0; background: #0f3460; border-radius: 6px;
+  cursor: pointer; display: flex; justify-content: space-between; align-items: center; }}
+.network-list li:hover {{ background: #1a4a7a; }}
+.signal {{ color: #888; font-size: 0.8em; }}
+#status {{ margin-top: 12px; font-size: 0.85em; }}
+</style>
+</head>
+<body>
+<h1>📶 WiFi Setup</h1>
+<div class="card">
+  <h2>Available Networks</h2>
+  <ul class="network-list" id="networkList"><li style="color:#888">Scanning...</li></ul>
+  <p style="margin-top:8px;font-size:0.8em;color:#666">
+    <a href="#" onclick="rescan()" style="color:#e94560">↻ Rescan</a>
+  </p>
+</div>
+<div class="card">
+  <h2>Connect</h2>
+  <label>Network Name
+    <input type="text" id="ssid" placeholder="Select from list above or type manually">
+  </label>
+  <label>Password (optional)
+    <input type="password" id="password" placeholder="Leave empty for open networks">
+  </label>
+  <button class="btn btn-primary" onclick="connect()">Connect</button>
+  <p id="status"></p>
+</div>
+<script>
+async function scan() {{
+  try {{
+    const r = await fetch('/api/wifi-scan');
+    const data = await r.json();
+    const list = document.getElementById('networkList');
+    list.innerHTML = '';
+    if (data.networks && data.networks.length) {{
+      data.networks.forEach(n => {{
+        const li = document.createElement('li');
+        const lock = n.encrypted ? '🔒' : '🔓';
+        li.innerHTML = `<span>${{lock}} ${{n.ssid}}</span><span class="signal">${{n.signal}} dBm</span>`;
+        li.onclick = () => document.getElementById('ssid').value = n.ssid;
+        list.appendChild(li);
+      }});
+    }} else {{
+      list.innerHTML = '<li style="color:#888">No networks found</li>';
+    }}
+  }} catch(e) {{
+    document.getElementById('networkList').innerHTML = '<li style="color:#e94560">Scan failed</li>';
+  }}
+}}
+async function rescan() {{
+  document.getElementById('networkList').innerHTML = '<li style="color:#888">Scanning...</li>';
+  scan();
+}}
+async function connect() {{
+  const ssid = document.getElementById('ssid').value.trim();
+  const password = document.getElementById('password').value;
+  const status = document.getElementById('status');
+  if (!ssid) {{ alert('Enter a network name'); return; }}
+  status.textContent = 'Connecting...';
+  try {{
+    const r = await fetch('/api/wifi-connect', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ssid, password}}),
+    }});
+    const data = await r.json();
+    if (data.ok) {{
+      status.textContent = '✓ Connected! The hotspot will turn off. Page will reload in 10s...';
+      setTimeout(() => location.reload(), 10000);
+    }} else {{
+      status.textContent = '✗ ' + (data.error || 'Connection failed');
+    }}
+  }} catch(e) {{
+    status.textContent = 'Error: ' + e.message;
+  }}
+}}
+scan();
+</script>
+</body>
+</html>"""
+
+
+@app.get("/wifi-setup", response_class=HTMLResponse)
+async def wifi_setup_page():
+    """WiFi setup page."""
+    return _WIFI_SETUP_HTML
+
+
+@app.get("/api/wifi-scan")
+async def wifi_scan():
+    """Scan available WiFi networks."""
+    networks = wifi_setup.scan_networks()
+    return {"networks": networks}
+
+
+@app.post("/api/wifi-connect")
+async def wifi_connect(request: Request):
+    """Connect to a WiFi network."""
+    data = await request.json()
+    ssid = data.get("ssid", "").strip()
+    password = data.get("password", "")
+    if not ssid:
+        return JSONResponse({"ok": False, "error": "SSID is required"}, status_code=400)
+    try:
+        # Stop hotspot first
+        wifi_setup.stop_hotspot()
+        # Write wpa_supplicant config
+        import subprocess
+        if password:
+            subprocess.run(
+                ["wpa_passphrase", ssid, password],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+        # Configure network
+        conf = f'''ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+country=RU
+
+network={{
+    ssid="{ssid}"
+    {"psk=\"" + password + "\"" if password else "key_mgmt=NONE"}
+}}
+'''
+        Path("/etc/wpa_supplicant/wpa_supplicant.conf").write_text(conf)
+        subprocess.run(["wpa_cli", "-i", wifi_setup.HOTSPOT_IFACE, "reconfigure"],
+                       capture_output=True, timeout=10)
+        logger.info("WiFi configured: SSID=%s", ssid)
+        return {"ok": True, "ssid": ssid}
+    except Exception as e:
+        logger.error("WiFi connect failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # ---- Google OAuth routes ----
@@ -619,6 +784,10 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <option value="24h" {sel_24h}>24-hour (07:00)</option>
         <option value="12h" {sel_12h}>12-hour (7:00 AM)</option>
       </select>
+    </label>
+    <label>Date Format
+      <input type="text" name="date_format" value="{date_fmt}" placeholder="%Y.%m.%d %a" style="font-size:0.85em">
+      <span style="font-size:0.75em;color:#666">strftime format (e.g. %Y.%m.%d %a = 2026.07.26 Sun). Leave empty for day numbers.</span>
     </label>
 </div>
 

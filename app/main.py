@@ -136,9 +136,34 @@ def _events_hash(events: list[dict]) -> str:
 
 
 # ---- Rendering pipeline ----
+_RENDER_TIMEOUT = 120  # seconds
+
+
 def do_render(force: bool = False) -> bool:
     """Fetch events + render + display. Thread-safe."""
-    with _render_lock:
+    logger.info("do_render(force=%s) starting", force)
+    # Run with timeout to prevent hanging the whole pipeline
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(_do_render_impl, force)
+        try:
+            result = fut.result(timeout=_RENDER_TIMEOUT)
+            logger.info("do_render(force=%s) completed: %s", force, result)
+            return result
+        except concurrent.futures.TimeoutError:
+            logger.error("do_render timed out after %ds", _RENDER_TIMEOUT)
+            return False
+        except Exception as e:
+            logger.error("do_render failed: %s", e)
+            return False
+
+
+def _do_render_impl(force: bool) -> bool:
+    """Actual render implementation, called with timeout."""
+    if not _render_lock.acquire(timeout=120):
+        logger.error("_do_render_impl: could not acquire render lock within 120s")
+        return False
+    try:
         global _last_events, _last_events_hash
         settings = settings_store.load()
         now = _now()
@@ -181,6 +206,11 @@ def do_render(force: bool = False) -> bool:
         if ok:
             logger.info("Screen updated (events_changed=%s, %d events)", events_changed, len(events))
         return ok
+    except Exception as e:
+        logger.error("_do_render_impl exception: %s", e)
+        return False
+    finally:
+        _render_lock.release()
 
 
 def render_setup_screen() -> bool:
@@ -385,6 +415,7 @@ class SettingsUpdate(BaseModel):
 async def update_settings(upd: SettingsUpdate):
     """Update settings. The background loop will pick up changes on next poll."""
     data = upd.model_dump(exclude_none=True)
+    logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
     settings_store.update(data)
     return {"ok": True}
 
@@ -392,7 +423,14 @@ async def update_settings(upd: SettingsUpdate):
 @app.post("/api/render")
 async def trigger_render():
     """Manually trigger a screen render in background."""
-    threading.Thread(target=lambda: do_render(force=True), daemon=True).start()
+    def _render_with_log():
+        logger.info("Manual render triggered")
+        try:
+            ok = do_render(force=True)
+            logger.info("Manual render completed: %s", ok)
+        except Exception as e:
+            logger.error("Manual render failed: %s", e)
+    threading.Thread(target=_render_with_log, daemon=True).start()
     return {"ok": True}
 
 

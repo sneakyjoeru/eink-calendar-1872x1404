@@ -224,23 +224,17 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
                 rect_bot = y + 6 + bb[3] + pad
                 draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
-                # Dotted border along the rectangle edges (3px dot, 3px gap)
+                # Dotted border along the rectangle edges (3px black dots, 6px gap)
                 dot_step = 9
                 dot_r = 1
-                # Top edge
                 for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, rect_top - dot_r, x + dx + dot_r, rect_top + dot_r], fill=WHITE)
-                # Bottom edge
+                    draw.ellipse([x + dx - dot_r, rect_top - dot_r, x + dx + dot_r, rect_top + dot_r], fill=BLACK)
                 for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, rect_bot - dot_r, x + dx + dot_r, rect_bot + dot_r], fill=WHITE)
-                # Left edge
+                    draw.ellipse([x + dx - dot_r, rect_bot - dot_r, x + dx + dot_r, rect_bot + dot_r], fill=BLACK)
                 for dy in range(dot_step, rect_bot - rect_top - 2, dot_step):
-                    draw.ellipse([x + 1 - dot_r, rect_top + dy - dot_r, x + 1 + dot_r, rect_top + dy + dot_r], fill=WHITE)
-                # Right edge
+                    draw.ellipse([x + 1 - dot_r, rect_top + dy - dot_r, x + 1 + dot_r, rect_top + dy + dot_r], fill=BLACK)
                 for dy in range(dot_step, rect_bot - rect_top - 2, dot_step):
-                    draw.ellipse([x + col_w - 2 - dot_r, rect_top + dy - dot_r, x + col_w - 2 + dot_r, rect_top + dy + dot_r], fill=WHITE)
-                for dy in range(8, row_h - 7, dot_step):
-                    draw.ellipse([x + col_w - 3 - dot_r, y + dy - dot_r, x + col_w - 3 + dot_r, y + dy + dot_r], fill=WHITE)
+                    draw.ellipse([x + col_w - 2 - dot_r, rect_top + dy - dot_r, x + col_w - 2 + dot_r, rect_top + dy + dot_r], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
@@ -360,13 +354,13 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
                 dot_step = 9
                 dot_r = 1
                 for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, rect_top - dot_r, x + dx + dot_r, rect_top + dot_r], fill=WHITE)
+                    draw.ellipse([x + dx - dot_r, rect_top - dot_r, x + dx + dot_r, rect_top + dot_r], fill=BLACK)
                 for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, rect_bot - dot_r, x + dx + dot_r, rect_bot + dot_r], fill=WHITE)
+                    draw.ellipse([x + dx - dot_r, rect_bot - dot_r, x + dx + dot_r, rect_bot + dot_r], fill=BLACK)
                 for dy in range(dot_step, rect_bot - rect_top - 2, dot_step):
-                    draw.ellipse([x + 1 - dot_r, rect_top + dy - dot_r, x + 1 + dot_r, rect_top + dy + dot_r], fill=WHITE)
+                    draw.ellipse([x + 1 - dot_r, rect_top + dy - dot_r, x + 1 + dot_r, rect_top + dy + dot_r], fill=BLACK)
                 for dy in range(dot_step, rect_bot - rect_top - 2, dot_step):
-                    draw.ellipse([x + col_w - 2 - dot_r, rect_top + dy - dot_r, x + col_w - 2 + dot_r, rect_top + dy + dot_r], fill=WHITE)
+                    draw.ellipse([x + col_w - 2 - dot_r, rect_top + dy - dot_r, x + col_w - 2 + dot_r, rect_top + dy + dot_r], fill=BLACK)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)
 

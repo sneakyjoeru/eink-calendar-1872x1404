@@ -136,32 +136,12 @@ def _events_hash(events: list[dict]) -> str:
 
 
 # ---- Rendering pipeline ----
-_RENDER_TIMEOUT = 120  # seconds
-
 
 def do_render(force: bool = False) -> bool:
-    """Fetch events + render + display. Thread-safe."""
+    """Fetch events + render + display. Thread-safe with timeout."""
     logger.info("do_render(force=%s) starting", force)
-    # Run with timeout to prevent hanging the whole pipeline
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        fut = pool.submit(_do_render_impl, force)
-        try:
-            result = fut.result(timeout=_RENDER_TIMEOUT)
-            logger.info("do_render(force=%s) completed: %s", force, result)
-            return result
-        except concurrent.futures.TimeoutError:
-            logger.error("do_render timed out after %ds", _RENDER_TIMEOUT)
-            return False
-        except Exception as e:
-            logger.error("do_render failed: %s", e)
-            return False
-
-
-def _do_render_impl(force: bool) -> bool:
-    """Actual render implementation, called with timeout."""
     if not _render_lock.acquire(timeout=120):
-        logger.error("_do_render_impl: could not acquire render lock within 120s")
+        logger.error("do_render: could not acquire render lock within 120s")
         return False
     try:
         global _last_events, _last_events_hash
@@ -207,7 +187,7 @@ def _do_render_impl(force: bool) -> bool:
             logger.info("Screen updated (events_changed=%s, %d events)", events_changed, len(events))
         return ok
     except Exception as e:
-        logger.error("_do_render_impl exception: %s", e)
+        logger.error("do_render exception: %s", e)
         return False
     finally:
         _render_lock.release()
@@ -413,25 +393,30 @@ class SettingsUpdate(BaseModel):
 
 @app.post("/api/settings")
 async def update_settings(upd: SettingsUpdate):
-    """Update settings. The background loop will pick up changes on next poll."""
+    """Update settings and trigger render."""
     data = upd.model_dump(exclude_none=True)
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
     settings_store.update(data)
+    # Trigger render in background thread
+    threading.Thread(target=_safe_render, daemon=True).start()
     return {"ok": True}
 
 
 @app.post("/api/render")
 async def trigger_render():
     """Manually trigger a screen render in background."""
-    def _render_with_log():
-        logger.info("Manual render triggered")
-        try:
-            ok = do_render(force=True)
-            logger.info("Manual render completed: %s", ok)
-        except Exception as e:
-            logger.error("Manual render failed: %s", e)
-    threading.Thread(target=_render_with_log, daemon=True).start()
+    threading.Thread(target=_safe_render, daemon=True).start()
     return {"ok": True}
+
+
+def _safe_render():
+    """Call do_render with full exception logging."""
+    logger.info("Manual render triggered")
+    try:
+        ok = do_render(force=True)
+        logger.info("Manual render completed: %s", ok)
+    except Exception as e:
+        logger.error("Manual render failed: %s", e)
 
 
 @app.get("/api/status")
@@ -443,6 +428,12 @@ async def status():
         "port": config.APP_PORT,
         "settings": settings_store.load(),
     }
+
+
+@app.get("/health")
+async def health():
+    """Quick health check — returns 200 if server is alive."""
+    return {"ok": True}
 
 
 @app.post("/api/upload-secret")
@@ -638,7 +629,7 @@ async function saveSettings() {{
   }});
   const status = document.getElementById('saveStatus');
   if (r.ok) {{
-    status.textContent = '✓ Saved! The e-ink will update on the next poll cycle.';
+    status.textContent = '✓ Saved! Render triggered. Screen updating...';
   }} else {{
     status.textContent = 'Error saving settings';
   }}

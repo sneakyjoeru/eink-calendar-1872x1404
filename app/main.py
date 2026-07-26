@@ -375,6 +375,11 @@ async def settings_page(request: Request):
     sel_12h = "selected" if s.get("time_format", "24h") == "12h" else ""
     tz = s.get("timezone", "")
     date_fmt = s.get("date_format", "")
+    sel_df_empty = 'selected' if not date_fmt else ''
+    sel_df_B_Y = 'selected' if date_fmt == '%B %Y' else ''
+    sel_df_B_d_Y = 'selected' if date_fmt == '%B %d, %Y' else ''
+    sel_df_Ymd_a = 'selected' if date_fmt == '%Y.%m.%d %a' else ''
+    sel_df_d_B_Y = 'selected' if date_fmt == '%d %B %Y' else ''
 
     return _SETTINGS_HTML.format(
         saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
@@ -393,6 +398,11 @@ async def settings_page(request: Request):
         brightness=s.get("brightness", 1.4),
         timezone=tz,
         date_fmt=date_fmt,
+        sel_df_empty=sel_df_empty,
+        sel_df_B_Y=sel_df_B_Y,
+        sel_df_B_d_Y=sel_df_B_d_Y,
+        sel_df_Ymd_a=sel_df_Ymd_a,
+        sel_df_d_B_Y=sel_df_d_B_Y,
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
         lan_ip=lan_ip,
@@ -786,8 +796,13 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
       </select>
     </label>
     <label>Date Format
-      <input type="text" name="date_format" value="{date_fmt}" placeholder="%Y.%m.%d %a" style="font-size:0.85em">
-      <span style="font-size:0.75em;color:#666">strftime format (e.g. %Y.%m.%d %a = 2026.07.26 Sun). Leave empty for day numbers.</span>
+      <select name="date_format">
+        <option value="" {sel_df_empty}>Default (view-dependent)</option>
+        <option value="%B %Y" {sel_df_B_Y}>July 2026</option>
+        <option value="%B %d, %Y" {sel_df_B_d_Y}>July 26, 2026</option>
+        <option value="%Y.%m.%d %a" {sel_df_Ymd_a}>2026.07.26 Sun</option>
+        <option value="%d %B %Y" {sel_df_d_B_Y}>26 July 2026</option>
+      </select>
     </label>
 </div>
 

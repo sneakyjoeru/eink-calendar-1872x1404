@@ -84,9 +84,9 @@ def render_calendar(view_mode: str, events: list[dict],
     de_h, de_m = (int(x) for x in day_end.split(":"))
 
     if view_mode == "month":
-        _render_month(draw, events, now, max_full_day)
+        _render_month(draw, events, now, max_full_day, date_format=date_format)
     elif view_mode == "35days":
-        _render_35days(draw, events, now, max_full_day)
+        _render_35days(draw, events, now, max_full_day, date_format=date_format)
     elif view_mode == "7days":
         _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format)
     else:  # week (default)
@@ -96,11 +96,11 @@ def render_calendar(view_mode: str, events: list[dict],
     if view_mode in ("week", "7days"):
         _draw_time_line(draw, now, view_mode, day_start, day_end, events)
 
-    # Settings URL footer (bottom center of screen)
+    # Settings URL (top center of screen)
     if settings_url:
-        url_font = _font(22)
+        url_font = _font(20)
         uw = _text_w(draw, settings_url, url_font)
-        draw.text(((W - uw) // 2, H - FOOTER_H + 4), settings_url, fill=GRAY_MID, font=url_font)
+        draw.text(((W - uw) // 2, 4), settings_url, fill=GRAY_MID, font=url_font)
 
     return img
 
@@ -124,9 +124,12 @@ def _draw_header(draw: ImageDraw.ImageDraw, title: str, subtitle: str = ""):
 
 
 # ---- Month view ----
-def _render_month(draw, events, now, max_full_day):
+def _render_month(draw, events, now, max_full_day, date_format=""):
     """Month grid view — weeks as rows, days as columns."""
-    title = now.strftime("%B %Y")
+    if date_format:
+        title = now.strftime(date_format)
+    else:
+        title = now.strftime("%B %Y")
     _draw_header(draw, title)
 
     today = now.date()
@@ -191,34 +194,38 @@ def _render_month(draw, events, now, max_full_day):
             day_str = str(day_num.day)
             if is_today:
                 # Highlight today with a filled rectangle (3px padding around text)
-                tw = _text_w(draw, day_str, cell_font)
-                th = _text_h(draw, day_str, cell_font)
+                bb = draw.textbbox((0, 0), day_str, font=cell_font)
+                tw = bb[2] - bb[0]
                 pad = 3
                 rx = x + 10 - pad
-                ry = y + 6 - pad
-                draw.rectangle([rx, ry, rx + tw + pad * 2, ry + th + pad * 2], fill=BLACK)
+                ry = y + 6 + bb[1] - pad
+                draw.rectangle([rx, ry, rx + tw + pad * 2, ry + (bb[3] - bb[1]) + pad * 2], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
 
-            # Events for this day (up to 3)
+            # Events for this day (fill cell as space permits)
             day_events = events_by_date.get(day_num, [])
+            max_ev = max(0, (row_h - 48) // 24)
             ey = y + 48
-            shown = 0
-            for ev in day_events[:3]:
+            for ev in day_events[:max_ev]:
                 if ev.get("summary", "") in ("", "(No title)"):
                     continue
-                label = ev["summary"][:18]
+                ev_time = _ev_time_str(ev, now)
+                if ev_time:
+                    label = f"{ev_time} {ev['summary']}"
+                else:
+                    label = ev["summary"]
                 # Truncate with ellipsis if too long
                 if _text_w(draw, label, event_font) > col_w - 16:
-                    while len(label) > 3 and _text_w(draw, label + "…", event_font) > col_w - 16:
+                    while len(label) > 4 and _text_w(draw, label + "…", event_font) > col_w - 16:
                         label = label[:-1]
                     label += "…"
                 draw.text((x + 8, ey), label, fill=GRAY_DARK, font=event_font)
                 ey += 24
-                shown += 1
-            if len(day_events) > 3:
-                draw.text((x + 8, ey), f"+{len(day_events) - 3}", fill=GRAY_MID, font=_font(18))
+            remaining = max(0, len(day_events) - max_ev)
+            if remaining > 0:
+                draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
 
             day_num += datetime.timedelta(days=1)
 
@@ -230,10 +237,10 @@ def _render_month(draw, events, now, max_full_day):
 # ---- Month separator line ----
 def _draw_month_separator(draw, grid_start, today, num_weeks,
                           grid_x, grid_y, col_w, row_h):
-    """Draw a dark line between days of different months in the month grid.
+    """Draw dark lines between days of different months.
 
-    Finds where the month changes (prev_month → current → next_month)
-    and draws a 2px black line at the cell boundary.
+    Draws 3px black lines at month boundaries: vertical between columns,
+    horizontal between rows.
     """
     # Find first and last day belonging to current month
     first_cur = None  # (week, col) of first day in current month
@@ -248,31 +255,46 @@ def _draw_month_separator(draw, grid_start, today, num_weeks,
             day_num += datetime.timedelta(days=1)
 
     if first_cur is None:
-        return  # No days of current month (shouldn't happen)
+        return
 
-    # Draw vertical line before first day of current month (if not col 0)
+    # Vertical separator before first day of current month (3px black)
     w, c = first_cur
     if c > 0:
         lx = grid_x + c * col_w
         ly = grid_y + w * row_h
-        draw.line([(lx, ly), (lx, ly + row_h - 1)], fill=BLACK, width=2)
+        draw.line([(lx, ly), (lx, ly + row_h - 1)], fill=BLACK, width=3)
 
-    # Draw vertical line after last day of current month (if not last col)
+    # Vertical separator after last day of current month (3px black)
     w, c = last_cur
     if c < 6:
         lx = grid_x + (c + 1) * col_w
         ly = grid_y + w * row_h
-        draw.line([(lx, ly), (lx, ly + row_h - 1)], fill=BLACK, width=2)
+        draw.line([(lx, ly), (lx, ly + row_h - 1)], fill=BLACK, width=3)
+
+    # Horizontal separator at top of first month row (if not first row)
+    w, c = first_cur
+    if w > 0:
+        ly = grid_y + w * row_h
+        draw.line([(grid_x, ly), (grid_x + 7 * col_w - 1, ly)], fill=BLACK, width=3)
+
+    # Horizontal separator at bottom of last month row (if not last row)
+    w, c = last_cur
+    if w < num_weeks - 1:
+        ly = grid_y + (w + 1) * row_h - 1
+        draw.line([(grid_x, ly), (grid_x + 7 * col_w - 1, ly)], fill=BLACK, width=3)
 
 
 # ---- 35-days view (5 weeks from current week) ----
-def _render_35days(draw, events, now, max_full_day):
+def _render_35days(draw, events, now, max_full_day, date_format=""):
     """35-days view — 5 weeks starting from current week's Monday.
 
     Shows a month-like grid with the current week as the top row.
     Includes month separator lines between months.
     """
-    title = now.strftime("%B %Y")
+    if date_format:
+        title = now.strftime(date_format)
+    else:
+        title = now.strftime("%B %Y")
     week_num = now.isocalendar()[1]
     _draw_header(draw, title, f"Week {week_num} — 35 days")
 
@@ -322,31 +344,37 @@ def _render_35days(draw, events, now, max_full_day):
             day_str = str(day_num.day)
             if is_today:
                 # Highlight today with a filled rectangle (3px padding)
-                tw = _text_w(draw, day_str, cell_font)
-                th = _text_h(draw, day_str, cell_font)
+                bb = draw.textbbox((0, 0), day_str, font=cell_font)
+                tw = bb[2] - bb[0]
                 pad = 3
                 rx = x + 10 - pad
-                ry = y + 6 - pad
-                draw.rectangle([rx, ry, rx + tw + pad * 2, ry + th + pad * 2], fill=BLACK)
+                ry = y + 6 + bb[1] - pad
+                draw.rectangle([rx, ry, rx + tw + pad * 2, ry + (bb[3] - bb[1]) + pad * 2], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)
 
-            # Events for this day (up to 3)
+            # Events for this day (fill cell as space permits)
             day_events = events_by_date.get(day_num, [])
+            max_ev = max(0, (row_h - 48) // 24)
             ey = y + 48
-            for ev in day_events[:3]:
+            for ev in day_events[:max_ev]:
                 if ev.get("summary", "") in ("", "(No title)"):
                     continue
-                label = ev["summary"][:18]
+                ev_time = _ev_time_str(ev, now)
+                if ev_time:
+                    label = f"{ev_time} {ev['summary']}"
+                else:
+                    label = ev["summary"]
                 if _text_w(draw, label, event_font) > col_w - 16:
-                    while len(label) > 3 and _text_w(draw, label + "…", event_font) > col_w - 16:
+                    while len(label) > 4 and _text_w(draw, label + "…", event_font) > col_w - 16:
                         label = label[:-1]
                     label += "…"
                 draw.text((x + 8, ey), label, fill=GRAY_DARK, font=event_font)
                 ey += 24
-            if len(day_events) > 3:
-                draw.text((x + 8, ey), f"+{len(day_events) - 3}", fill=GRAY_MID, font=_font(18))
+            remaining = max(0, len(day_events) - max_ev)
+            if remaining > 0:
+                draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
 
             day_num += datetime.timedelta(days=1)
 
@@ -355,7 +383,10 @@ def _render_35days(draw, events, now, max_full_day):
                           grid_x, grid_y, col_w, row_h)
 def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format=""):
     """Week view — 7 day columns with timed events stacked vertically."""
-    title = now.strftime("%B %d, %Y")
+    if date_format:
+        title = now.strftime(date_format)
+    else:
+        title = now.strftime("%B %d, %Y")
     week_num = now.isocalendar()[1]
     _draw_header(draw, title, f"Week {week_num}")
 
@@ -365,7 +396,10 @@ def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_f
 # ---- 7-days view (next 7 days starting today) ----
 def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format=""):
     """7-days view — starting from today, 7 consecutive day columns."""
-    title = "Next 7 Days"
+    if date_format:
+        title = now.strftime(date_format)
+    else:
+        title = "Next 7 Days"
     _draw_header(draw, title, now.strftime("%a %b %d"))
 
     _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format)
@@ -442,10 +476,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         dw = _text_w(draw, dow, dow_font)
         draw.text((cx - dw // 2, grid_y - 58), dow, fill=GRAY_DARK, font=dow_font)
 
-        if date_format:
-            date_str = d.strftime(date_format)
-        else:
-            date_str = str(d.day)
+        date_str = str(d.day)
         dw2 = _text_w(draw, date_str, date_font)
         color = BLACK
         if d == today:

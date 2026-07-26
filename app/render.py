@@ -467,7 +467,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
     grid_x = left_margin
     grid_y = HEADER_H + 50  # Leave room for full-day event strip
     grid_w = W - left_margin - RIGHT_PAD
-    grid_h = H - grid_y - FOOTER_H
+    grid_h = H - grid_y - FOOTER_H + 20  # +~2mm bottom expansion
 
     col_w = grid_w // days
     ds_min = ds_h * 60 + ds_m
@@ -506,13 +506,14 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             label = f"{h:02d}"
         draw.text((grid_x - max_label_w - label_rpad, y - 14), label, fill=GRAY_MID, font=hour_font)
 
-    # Column separators — thicker where month changes
+    # Column separators — thicker where month changes, extending up to header line
+    sep_top = HEADER_H - 10  # header separator line
     for i in range(1, days):
         x = grid_x + i * col_w
         prev_d = start_date + datetime.timedelta(days=i - 1)
         curr_d = start_date + datetime.timedelta(days=i)
         if prev_d.month != curr_d.month:
-            draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=BLACK, width=3)
+            draw.line([(x, sep_top), (x, grid_y + grid_h)], fill=BLACK, width=3)
         else:
             draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=GRAY_LIGHT, width=1)
 

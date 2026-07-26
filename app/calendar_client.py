@@ -44,9 +44,7 @@ def is_authenticated() -> bool:
         _creds = Credentials.from_authorized_user_file(str(token_path), config.GOOGLE_SCOPES)
         if _creds and _creds.expired and _creds.refresh_token:
             try:
-                import httplib2
-                http = httplib2.Http(timeout=15)
-                _creds.refresh(Request(http))
+                _creds.refresh(Request())
                 _save_token(_creds)
                 return True
             except Exception as e:
@@ -106,16 +104,20 @@ def logout() -> None:
 
 
 def _get_service():
-    """Build an authenticated Calendar service, refreshing if needed."""
+    """Build an authenticated Calendar service with 15s timeout."""
     global _creds
     if not is_authenticated():
         return None
     if _creds.expired and _creds.refresh_token:
         _creds.refresh(Request())
         _save_token(_creds)
-    import httplib2
-    http = httplib2.Http(timeout=15)
-    return build("calendar", "v3", credentials=_creds, http=http, static_discovery=False)
+    try:
+        from google_auth_httplib2 import AuthorizedHttp
+        import httplib2
+        http = AuthorizedHttp(credentials=_creds, http=httplib2.Http(timeout=15))
+        return build("calendar", "v3", http=http, static_discovery=False)
+    except ImportError:
+        return build("calendar", "v3", credentials=_creds, static_discovery=False)
 
 
 def list_calendars() -> list[dict]:

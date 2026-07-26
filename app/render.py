@@ -264,7 +264,10 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
                         name += "…"
                     draw.text((x + 8 + time_w, ey), name, fill=GRAY_DARK, font=event_font)
                 else:
-                    draw.text((x + 8, ey), ev["summary"][:int(cell_avail_w / 11)], fill=GRAY_DARK, font=event_font)
+                    # All-day event — wrap summary to fit cell width
+                    wrapped = _wrap_text_lines(draw, ev["summary"], event_font, cell_avail_w)
+                    if wrapped:
+                        draw.text((x + 8, ey), wrapped[0], fill=GRAY_DARK, font=event_font)
                 ey += 26
                 ev_idx += 1
             if ev_idx < len(visible_events) and ey + 26 > y + row_h - 4:
@@ -386,7 +389,9 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
                         name += "…"
                     draw.text((x + 8 + time_w, ey), name, fill=GRAY_DARK, font=event_font)
                 else:
-                    draw.text((x + 8, ey), ev["summary"][:int(cell_avail_w / 11)], fill=GRAY_DARK, font=event_font)
+                    wrapped = _wrap_text_lines(draw, ev["summary"], event_font, cell_avail_w)
+                    if wrapped:
+                        draw.text((x + 8, ey), wrapped[0], fill=GRAY_DARK, font=event_font)
                 ey += 26
                 ev_idx += 1
             remaining = len(visible_events) - ev_idx

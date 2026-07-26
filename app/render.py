@@ -707,13 +707,16 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
         fd_list = fd_events_by_date.get(d, [])
+        fd_count = min(len(fd_list), max_full_day)
         for j, ev in enumerate(fd_list[:max_full_day]):
             label = ev.get("summary", "")
             if not label or label == "(No title)":
                 continue
 
-            # Vertical: first 2 below header line, 3rd+ overshoot above
-            if j < 2:
+            # Vertical: single event goes above header line, 2 below, 3+ overshoot
+            if fd_count == 1:
+                ey = fd_top - fd_step  # single event, bottom touches header line
+            elif j < 2:
                 ey = fd_top + j * fd_step
             else:
                 ey = fd_top - (j - 1) * fd_step

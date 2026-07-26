@@ -699,10 +699,10 @@ network={{
 # ---- Google OAuth routes ----
 
 # Google blocks IP addresses in redirect URIs. The workaround:
-# use https://localhost (allowed for OAuth) so the redirect URL
-# carries the auth code visible in the address bar for copying.
+# use http://localhost (the only HTTP exception Google allows) and
+# let the user copy the authorization code from the failed redirect manually.
 
-_OAUTH_REDIRECT_URI = "https://localhost:8889/auth/callback"
+_OAUTH_REDIRECT_URI = "http://localhost:8889/auth/callback"
 
 
 @app.get("/auth/start")
@@ -725,6 +725,7 @@ async def auth_exchange(code: str = Form(...)):
     ok, err = calendar_client.complete_auth(code)
     if ok:
         do_render(force=True)
+        do_render(force=True)
         return {"ok": True}
     return JSONResponse({"error": err or "Code exchange failed"}, status_code=400)
 
@@ -736,6 +737,7 @@ async def auth_callback(code: str = ""):
     if code:
         ok, _ = calendar_client.complete_auth(code)
         if ok:
+            do_render(force=True)
             do_render(force=True)
             return RedirectResponse(url="/settings?auth=success")
     return HTMLResponse("""
@@ -765,10 +767,13 @@ _SETTINGS_HTML = """<!DOCTYPE html>
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-       background: #1a1a2e; color: #eee; padding: 20px; max-width: 600px; margin: 0 auto; }}
+       background: #1a1a2e; color: #eee; padding: 20px; max-width: 960px; margin: 0 auto; }}
 h1 {{ font-size: 1.5em; margin-bottom: 20px; text-align: center; }}
-.card {{ background: #16213e; border-radius: 12px; padding: 20px; margin-bottom: 16px; }}
+.settings-grid {{ display: grid; grid-template-columns: 1fr; gap: 16px; }}
+@media (min-width: 700px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr; }} }}
+.card {{ background: #16213e; border-radius: 12px; padding: 20px; }}
 .card h2 {{ font-size: 1.1em; margin-bottom: 12px; color: #e94560; }}
+.card h3 {{ font-size: 0.85em; margin: 14px 0 8px; color: #888; text-transform: uppercase; letter-spacing: 1px; }}
 label {{ display: block; margin-bottom: 8px; font-size: 0.9em; }}
 select, input[type="time"], input[type="number"], input[type="range"] {{
   width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #333;
@@ -787,23 +792,42 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 .cal-item {{ display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; }}
 .cal-item input {{ width: auto; }}
 .cal-dot {{ width: 14px; height: 14px; border-radius: 50%; display: inline-block; }}
+.cal-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }}
 .footer {{ text-align: center; font-size: 0.75em; color: #555; margin-top: 20px; }}
 .row {{ display: flex; gap: 12px; }}
 .row > div {{ flex: 1; }}
+.check-row {{ display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }}
+.check-row input {{ width: auto; }}
+.note {{ font-size: 0.75em; color: #666; margin-top: 2px; }}
 </style>
 </head>
 <body>
-<h1>📅 E-Ink Calendar</h1>
 {saved_html}
 
-<div class="card">
-  <h2>Google Account</h2>
-  {auth_section}
+<form id="settingsForm" action="/api/settings" method="POST">
+<div class="row" style="margin-bottom:16px;flex-wrap:wrap">
+  <div class="card" style="flex:1;min-width:280px">
+    <h2>Google Account</h2>
+    {auth_section}
+  </div>
+  <div class="card" style="flex:1;min-width:280px">
+    <h2>⏱ Display</h2>
+    <div class="row">
+      <div><label>Brightness
+        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}">
+        <div class="note" style="text-align:center">{brightness}</div>
+      </label></div>
+      <div><label>Text Size
+        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px">
+        <div class="note">+ larger, − smaller</div>
+      </label></div>
+    </div>
+  </div>
 </div>
 
-<div class="card">
-  <h2>View Settings</h2>
-  <form id="settingsForm" action="/api/settings" method="POST">
+<div class="settings-grid">
+  <div class="card">
+    <h2>📐 Layout</h2>
     <label>View Mode
       <select name="view_mode">
         <option value="month" {sel_month}>Month</option>
@@ -816,15 +840,32 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
       <div><label>Day Start <input type="time" name="day_start" value="{day_start}"></label></div>
       <div><label>Day End <input type="time" name="day_end" value="{day_end}"></label></div>
     </div>
-    <label>Max Full-Day Events (per day)
-      <select name="max_full_day_events">
-        <option value="0" {sel_fd_0}>0 (hide)</option>
-        <option value="1" {sel_fd_1}>1</option>
-        <option value="2" {sel_fd_2}>2</option>
-        <option value="3" {sel_fd_3}>3</option>
-      </select>
-    </label>
-    <label>Update interval
+    <div class="row">
+      <div><label>Time Format
+        <select name="time_format">
+          <option value="24h" {sel_24h}>24-hour (07:00)</option>
+          <option value="12h" {sel_12h}>12-hour (7:00 AM)</option>
+        </select>
+      </label></div>
+      <div><label>Date Format
+        <select name="date_format">
+          <option value="" {sel_df_empty}>Default</option>
+          <option value="%Y-%m-%d" {sel_Y_m_d}>2026-07-26</option>
+          <option value="%Y.%m.%d %a" {sel_df_Ymd_a}>2026.07.26 Sun</option>
+          <option value="%d %b %Y" {sel_d_b_Y}>26 Jul 2026</option>
+          <option value="%d %B %Y" {sel_df_d_B_Y}>26 July 2026</option>
+          <option value="%d.%m.%Y" {sel_d_m_Y}>26.07.2026</option>
+          <option value="%m/%d/%Y" {sel_m_d_Y}>07/26/2026</option>
+          <option value="%b %d, %Y" {sel_b_d_Y}>Jul 26, 2026</option>
+          <option value="%B %Y" {sel_df_B_Y}>July 2026</option>
+          <option value="%B %d, %Y" {sel_df_B_d_Y}>July 26, 2026</option>
+          <option value="%a %b %d" {sel_a_b_d}>Sun Jul 26</option>
+          <option value="%A, %B %d" {sel_AB_d}>Sunday, July 26</option>
+          <option value="%A, %B %d, %Y" {sel_AB_d_Y}>Sunday, July 26, 2026</option>
+        </select>
+      </label></div>
+    </div>
+    <label>Update Interval
       <select name="time_line_interval_min">
         <option value="5" {sel_tl_5}>5 min</option>
         <option value="10" {sel_tl_10}>10 min</option>
@@ -833,58 +874,45 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <option value="60" {sel_tl_60}>60 min</option>
       </select>
     </label>
-    <label>Event Poll Interval (seconds)
-      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
-    </label>
-    <label>Brightness: {brightness}
-      <input type="range" name="brightness" min="1.0" max="2.0" step="0.1" value="{brightness}">
-    </label>
-    <label style="display:flex;align-items:center;gap:8px;margin-top:8px">
-      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim} style="width:auto">
-      <span>Dim events when time line crosses them</span>
-    </label>
-    <label style="display:flex;align-items:center;gap:8px">
-      <input type="checkbox" name="dim_past_events" value="1" {dim_past} style="width:auto">
-      <span>Dim past events</span>
-    </label>
-    <label>Text Size Modifier (+/-)
-      <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px;font-size:0.9em">
-      <span style="font-size:0.75em;color:#666">Adjust all text sizes (+2 = larger, -2 = smaller)</span>
-    </label>
     <label>Timezone
-      <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP" style="font-size:0.85em">
-      <span style="font-size:0.75em;color:#666">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3)</span>
+      <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP">
+      <div class="note">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3)</div>
     </label>
-    <label>Time Format
-      <select name="time_format">
-        <option value="24h" {sel_24h}>24-hour (07:00)</option>
-        <option value="12h" {sel_12h}>12-hour (7:00 AM)</option>
-      </select>
-    </label>
-    <label>Date Format
-      <select name="date_format">
-        <option value="" {sel_df_empty}>Default (view-dependent)</option>
-        <option value="%B %Y" {sel_df_B_Y}>July 2026</option>
-        <option value="%B %d, %Y" {sel_df_B_d_Y}>July 26, 2026</option>
-        <option value="%Y.%m.%d %a" {sel_df_Ymd_a}>2026.07.26 Sun</option>
-        <option value="%d %B %Y" {sel_df_d_B_Y}>26 July 2026</option>
-        <option value="%a %b %d" {sel_a_b_d}>Sun Jul 26</option>
-        <option value="%d.%m.%Y" {sel_d_m_Y}>26.07.2026</option>
-        <option value="%m/%d/%Y" {sel_m_d_Y}>07/26/2026</option>
-        <option value="%A, %B %d" {sel_AB_d}>Sunday, July 26</option>
-        <option value="%Y-%m-%d" {sel_Y_m_d}>2026-07-26</option>
-        <option value="%d %b %Y" {sel_d_b_Y}>26 Jul 2026</option>
-        <option value="%b %d, %Y" {sel_b_d_Y}>Jul 26, 2026</option>
-        <option value="%A, %B %d, %Y" {sel_AB_d_Y}>Sunday, July 26, 2026</option>
-      </select>
-    </label>
-</div>
+  </div>
 
-<div class="card">
-  <h2>Calendars</h2>
-  {cal_checkboxes}
-  {cal_error}
-  <p style="font-size:0.75em;color:#666;margin-top:8px;">Empty selection = all calendars</p>
+  <div class="card">
+    <h2>📅 Events</h2>
+    <label>Max Full-Day Events
+      <select name="max_full_day_events">
+        <option value="0" {sel_fd_0}>0 (hide)</option>
+        <option value="1" {sel_fd_1}>1</option>
+        <option value="2" {sel_fd_2}>2</option>
+        <option value="3" {sel_fd_3}>3</option>
+      </select>
+    </label>
+    <label>Event Poll Interval
+      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
+      <div class="note">How often to check for new events (seconds)</div>
+    </label>
+    <h3>Visual Effects</h3>
+    <label class="check-row">
+      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
+      <span>Dim past events &amp; days</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
+      <span>Dim events when time line crosses</span>
+    </label>
+  </div>
+
+  <div class="card">
+    <h2>Calendars</h2>
+    <div class="cal-grid">
+    {cal_checkboxes}
+    </div>
+    {cal_error}
+    <p style="font-size:0.75em;color:#666;margin-top:8px;">Empty selection = all calendars</p>
+  </div>
 </div>
 
 <button type="submit" class="btn btn-primary">💾 Save & Render</button>
@@ -892,7 +920,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 </form>
 
 <div class="footer">
-  E-Ink Calendar · {lan_ip}:{port} · 1872×1404 IT8951
+  E-Ink Calendar · {lan_ip}:{port} · 1872×1404 IT8951 by <a href="https://sneakyjoe.live/donate" style="color:#555;text-decoration:none">sneakyjoe.live</a>
 </div>
 
 <script>

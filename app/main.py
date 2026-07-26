@@ -796,7 +796,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     <label>Max Full-Day Events (per day): {max_fd}
       <input type="range" name="max_full_day_events" min="1" max="3" value="{max_fd}">
     </label>
-    <label>Time Line Update (minutes)
+    <label>Update interval (minutes)
       <input type="number" name="time_line_interval_min" value="{tl_interval}" min="1" max="60">
     </label>
     <label>Event Poll Interval (seconds)

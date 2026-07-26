@@ -533,6 +533,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         timed_events_by_date.setdefault(d, []).append(ev)
 
     event_font = _font(24)
+    event_font_bold = _font(24, bold=True)
     event_font_sm = _font(18)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
@@ -642,7 +643,9 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         break
                 if y + line_h > ey_bot - 4:
                     break  # No room
-                draw.text((txt_x, y), text, fill=text_fill, font=event_font)
+                time_txt_x = txt_x - 6 if is_time else txt_x
+                draw.text((time_txt_x, y), text, fill=text_fill,
+                          font=event_font_bold if is_time else event_font)
                 y += line_h
 
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)

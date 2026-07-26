@@ -506,10 +506,15 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             label = f"{h:02d}"
         draw.text((grid_x - max_label_w - label_rpad, y - 14), label, fill=GRAY_MID, font=hour_font)
 
-    # Column separators
+    # Column separators — thicker where month changes
     for i in range(1, days):
         x = grid_x + i * col_w
-        draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=GRAY_LIGHT, width=1)
+        prev_d = start_date + datetime.timedelta(days=i - 1)
+        curr_d = start_date + datetime.timedelta(days=i)
+        if prev_d.month != curr_d.month:
+            draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=BLACK, width=3)
+        else:
+            draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=GRAY_LIGHT, width=1)
 
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
     dow_font = _font(30, bold=True)

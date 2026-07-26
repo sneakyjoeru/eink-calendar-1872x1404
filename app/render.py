@@ -457,7 +457,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 h12 = 12
             label = f"{h12} {ampm}"
         else:
-            label = f"{h:02d}:00"
+            label = f"{h:02d}"
         lw = _text_w(draw, label, hour_font)
         if lw > max_label_w:
             max_label_w = lw
@@ -504,7 +504,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 h12 = 12
             label = f"{h12} {ampm}"
         else:
-            label = f"{h:02d}:00"
+            label = f"{h:02d}"
         draw.text((grid_x - max_label_w - label_rpad, y - 14), label, fill=GRAY_MID, font=hour_font)
 
     # Column separators

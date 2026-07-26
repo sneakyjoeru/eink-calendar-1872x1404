@@ -63,6 +63,7 @@ GRAY_DARK = (60, 60, 60)
 GRAY_MID = (120, 120, 120)
 GRAY_LIGHT = (200, 200, 200)
 GRAY_VLIGHT = (239, 239, 239)
+GRAY_DIM = (153, 153, 153)
 GRAY_HOUR_LINE = (170, 170, 170)
 
 
@@ -92,9 +93,9 @@ def render_calendar(view_mode: str, events: list[dict],
     de_h, de_m = (int(x) for x in day_end.split(":"))
 
     if view_mode == "month":
-        _render_month(draw, events, now, max_full_day, date_format=date_format)
+        _render_month(draw, events, now, max_full_day, date_format=date_format, dim_past_events=dim_past_events)
     elif view_mode == "35days":
-        _render_35days(draw, events, now, max_full_day, date_format=date_format)
+        _render_35days(draw, events, now, max_full_day, date_format=date_format, dim_past_events=dim_past_events)
     elif view_mode == "7days":
         _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
                       crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
@@ -134,7 +135,7 @@ def _draw_header(draw: ImageDraw.ImageDraw, title: str, subtitle: str = ""):
 
 
 # ---- Month view ----
-def _render_month(draw, events, now, max_full_day, date_format=""):
+def _render_month(draw, events, now, max_full_day, date_format="", dim_past_events=False):
     """Month grid view — weeks as rows, days as columns."""
     if date_format:
         title = now.strftime(date_format)
@@ -251,35 +252,35 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
             cell_avail_w = col_w - 16
             visible_events = [ev for ev in day_events if ev.get("summary", "") not in ("", "(No title)")]
             ey = y + 48
+            ev_fill = GRAY_DIM if (dim_past_events and day_num < today) else GRAY_DARK
             ev_idx = 0
             while ev_idx < len(visible_events) and ey + 26 <= y + row_h - 4:
                 ev = visible_events[ev_idx]
                 ev_time = _ev_time_str(ev, now)
                 if ev_time:
                     time_w = _text_w(draw, ev_time + " ", event_bold)
-                    draw.text((x + 8, ey), ev_time + " ", fill=GRAY_DARK, font=event_bold)
+                    draw.text((x + 8, ey), ev_time + " ", fill=ev_fill, font=event_bold)
                     name = ev["summary"]
                     if time_w + _text_w(draw, name, event_font) > cell_avail_w:
                         while len(name) > 2 and time_w + _text_w(draw, name + "…", event_font) > cell_avail_w:
                             name = name[:-1]
                         name += "…"
-                    draw.text((x + 8 + time_w, ey), name, fill=GRAY_DARK, font=event_font)
+                    draw.text((x + 8 + time_w, ey), name, fill=ev_fill, font=event_font)
                 else:
                     # All-day event — wrap summary to fit cell width
                     wrapped = _wrap_text_lines(draw, ev["summary"], event_font, cell_avail_w)
                     if wrapped:
-                        draw.text((x + 8, ey), wrapped[0], fill=GRAY_DARK, font=event_font)
+                        draw.text((x + 8, ey), wrapped[0], fill=ev_fill, font=event_font)
                 ey += 26
                 ev_idx += 1
             if ev_idx < len(visible_events) and ey + 26 > y + row_h - 4:
                 remaining = len(visible_events) - ev_idx
-                draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
+                draw.text((x + 8, ey), f"+{remaining}", fill=ev_fill, font=_font(18))
 
             day_num += datetime.timedelta(days=1)
 
 
-# ---- 35-days view (5 weeks from current week) ----
-def _render_35days(draw, events, now, max_full_day, date_format=""):
+def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_events=False):
     """35-days view — 5 weeks starting from current week's Monday.
 
     Shows a month-like grid with the current week as the top row.
@@ -384,28 +385,29 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
             cell_avail_w = col_w - 16
             visible_events = [ev for ev in day_events if ev.get("summary", "") not in ("", "(No title)")]
             ey = y + 48
+            ev_fill = GRAY_DIM if (dim_past_events and day_num < today) else GRAY_DARK
             ev_idx = 0
             while ev_idx < len(visible_events) and ey + 26 <= y + row_h - 4:
                 ev = visible_events[ev_idx]
                 ev_time = _ev_time_str(ev, now)
                 if ev_time:
                     time_w = _text_w(draw, ev_time + " ", event_bold)
-                    draw.text((x + 8, ey), ev_time + " ", fill=GRAY_DARK, font=event_bold)
+                    draw.text((x + 8, ey), ev_time + " ", fill=ev_fill, font=event_bold)
                     name = ev["summary"]
                     if time_w + _text_w(draw, name, event_font) > cell_avail_w:
                         while len(name) > 2 and time_w + _text_w(draw, name + "…", event_font) > cell_avail_w:
                             name = name[:-1]
                         name += "…"
-                    draw.text((x + 8 + time_w, ey), name, fill=GRAY_DARK, font=event_font)
+                    draw.text((x + 8 + time_w, ey), name, fill=ev_fill, font=event_font)
                 else:
                     wrapped = _wrap_text_lines(draw, ev["summary"], event_font, cell_avail_w)
                     if wrapped:
-                        draw.text((x + 8, ey), wrapped[0], fill=GRAY_DARK, font=event_font)
+                        draw.text((x + 8, ey), wrapped[0], fill=ev_fill, font=event_font)
                 ey += 26
                 ev_idx += 1
             remaining = len(visible_events) - ev_idx
             if remaining > 0 and ey + 26 > y + row_h - 4:
-                draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
+                draw.text((x + 8, ey), f"+{remaining}", fill=ev_fill, font=_font(18))
 
             day_num += datetime.timedelta(days=1)
 
@@ -605,7 +607,6 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
         # Draw boxes: longest first so shorter events render ON TOP
         now_min_total = now.hour * 60 + now.minute
-        GRAY_DIM = (153, 153, 153)  # 3/5 of max darkness
         for info in sorted(draw_infos, key=lambda e: -e[4]):
             ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min = info
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)

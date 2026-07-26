@@ -225,7 +225,7 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
                 draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
                 # Dotted border along the rectangle edges (3px dot, 3px gap)
-                dot_step = 6
+                dot_step = 9
                 dot_r = 1
                 # Top edge
                 for dx in range(2, col_w - 1, dot_step):
@@ -357,7 +357,7 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
                 draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
                 # Dotted border
-                dot_step = 6
+                dot_step = 9
                 dot_r = 1
                 for dx in range(2, col_w - 1, dot_step):
                     draw.ellipse([x + dx - dot_r, rect_top - dot_r, x + dx + dot_r, rect_top + dot_r], fill=WHITE)

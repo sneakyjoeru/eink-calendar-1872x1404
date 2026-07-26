@@ -60,7 +60,7 @@ BLACK = 0
 GRAY_DARK = 60
 GRAY_MID = 120
 GRAY_LIGHT = 200
-GRAY_VLIGHT = 230
+GRAY_VLIGHT = 248
 
 
 def render_calendar(view_mode: str, events: list[dict],
@@ -183,7 +183,7 @@ def _render_month(draw, events, now, max_full_day):
                 cy = y + 24
                 r = 22
                 draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=BLACK)
-                draw.text((cx - 14, cy - 18), str(day_num.day), fill=WHITE, font=cell_font)
+                draw.text((cx - 14, cy - 18), str(day_num.day), fill=(255, 255, 255), font=cell_font)
             else:
                 draw.text((x + 10, y + 6), str(day_num.day), fill=color, font=cell_font)
 
@@ -268,7 +268,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             # Circle the date
             r = 18
             draw.ellipse([cx - r, grid_y - 22, cx + r, grid_y - 22 + 2 * r], fill=BLACK)
-            draw.text((cx - dw2 // 2, grid_y - 20), date_str, fill=WHITE, font=date_font)
+            draw.text((cx - dw2 // 2, grid_y - 20), date_str, fill=(255, 255, 255), font=date_font)
         else:
             draw.text((cx - dw2 // 2, grid_y - 22), date_str, fill=color, font=date_font)
 
@@ -294,8 +294,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 while len(label) > 2 and _text_w(draw, label + "…", _font(18)) > col_w - 8:
                     label = label[:-1]
                 label += "…"
-            # Draw a filled bar (light grey bg, 1px black border)
-            draw.rectangle([x + 4, ey, x + col_w - 4, ey + 20], fill=GRAY_VLIGHT, outline=BLACK, width=1)
+            # Draw a filled bar (light grey bg, 2px black border)
+            draw.rectangle([x + 4, ey, x + col_w - 4, ey + 20], fill=GRAY_VLIGHT, outline=BLACK, width=2)
             draw.text((x + 8, ey + 1), label, fill=BLACK, font=_font(18))
 
     # Grid border
@@ -354,9 +354,9 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             ey_bot = grid_y + (ev_end_min - ds_min) * minute_h
             eh = max(ey_bot - ey_top, 18)
 
-            # Event block (light grey bg, 1px black border, black text)
+            # Event block (light grey bg, 2px black border, black text)
             draw.rectangle([x + 6, ey_top, x + col_w - 6, ey_top + eh - 1],
-                           fill=GRAY_VLIGHT, outline=BLACK, width=1)
+                           fill=GRAY_VLIGHT, outline=BLACK, width=2)
 
             # Build text: "HH:MM-HH:MM Summary" on line 1, then description
             avail_w = col_w - 16  # padding inside box
@@ -397,7 +397,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         while len(desc) > 3 and _text_w(draw, desc + "…", event_font_sm) > avail_w:
                             desc = desc[:-1]
                         desc += "…"
-                    draw.text((x + 10, ey_top + 2 + line_h), desc, fill=GRAY_DARK, font=event_font_sm)
+                    draw.text((x + 10, ey_top + 2 + line_h), desc, fill=BLACK, font=event_font_sm)
                 elif eh >= line_h * 3 and time_range:
                     # No description but enough space — show summary in larger font
                     draw.text((x + 10, ey_top + 2 + line_h), summary[:int(avail_w / 8)], fill=BLACK, font=event_font_sm)

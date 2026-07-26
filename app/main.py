@@ -417,6 +417,8 @@ async def update_settings(request: Request):
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
     settings_store.update(data)
+    # Trigger render immediately so view mode / settings take effect right away
+    threading.Thread(target=_safe_render, daemon=True).start()
     return RedirectResponse(url="/settings?saved=1", status_code=303)
 
 

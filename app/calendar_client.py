@@ -206,6 +206,7 @@ def _normalize_event(ev: dict, cal_id: str) -> dict:
     return {
         "id": ev.get("id", ""),
         "summary": ev.get("summary", "(No title)"),
+        "description": ev.get("description", ""),
         "location": ev.get("location", ""),
         "start": start_dt,
         "end": end_dt,

@@ -55,13 +55,26 @@ def _scheme() -> str:
 def _detect_timezone() -> str:
     """Auto-detect timezone from IP via ip-api.com. Returns IANA name or empty."""
     try:
-        r = requests.get("http://ip-api.com/json", timeout=5)
+        r = requests.get("http://ip-api.com/json", timeout=3)
         data = r.json()
         if data.get("status") == "success" and data.get("timezone"):
             return data["timezone"]
     except Exception:
         pass
     return ""
+
+
+def _auto_detect_timezone_async():
+    """Run timezone detection in a background thread — don't block startup."""
+    def _run():
+        detected = _detect_timezone()
+        if detected:
+            s = settings_store.load()
+            if not s.get("timezone"):
+                settings_store.update({"timezone": detected})
+                logger.info("Timezone auto-detected: %s", detected)
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
 
 def _now() -> datetime.datetime:
@@ -201,13 +214,8 @@ async def startup():
                 scheme, lan_ip, config.APP_PORT)
     logger.info("IT8951 binary: %s", config.IT8951_BINARY)
 
-    # Auto-detect timezone if not set
-    s = settings_store.load()
-    if not s.get("timezone"):
-        detected = _detect_timezone()
-        if detected:
-            settings_store.update({"timezone": detected})
-            logger.info("Timezone auto-detected: %s", detected)
+    # Auto-detect timezone in background (don't block startup)
+    _auto_detect_timezone_async()
 
     # Initial screen
     if not calendar_client.is_configured():

@@ -181,9 +181,8 @@ def fetch_events(start: datetime.datetime, end: datetime.datetime,
         except Exception as e:
             logger.warning("fetch_events for %s: %s", cal_id, e)
 
-    # Sort by start time — handle mixed datetime.date / datetime.datetime
-    all_events.sort(key=lambda e: e["start"] if isinstance(e["start"], datetime.datetime)
-                    else datetime.datetime.combine(e["start"], datetime.time.min))
+    # Sort by start time — use ISO string to handle mixed date/datetime/aware types
+    all_events.sort(key=lambda e: str(e["start"]))
     return all_events
 
 

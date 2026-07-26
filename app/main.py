@@ -11,6 +11,9 @@ import socket
 import threading
 import time
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import requests
 
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
@@ -49,6 +52,31 @@ def _scheme() -> str:
     return "https" if config.SSL_ENABLED else "http"
 
 
+def _detect_timezone() -> str:
+    """Auto-detect timezone from IP via ip-api.com. Returns IANA name or empty."""
+    try:
+        r = requests.get("http://ip-api.com/json", timeout=5)
+        data = r.json()
+        if data.get("status") == "success" and data.get("timezone"):
+            return data["timezone"]
+    except Exception:
+        pass
+    return ""
+
+
+def _now() -> datetime.datetime:
+    """Get current datetime in the configured timezone."""
+    s = settings_store.load()
+    tz_name = s.get("timezone", "")
+    if tz_name:
+        try:
+            tz = ZoneInfo(tz_name)
+            return datetime.datetime.now(tz)
+        except Exception:
+            pass
+    return datetime.datetime.now()
+
+
 def _events_hash(events: list[dict]) -> str:
     """Stable hash of event list to detect changes."""
     parts = []
@@ -63,7 +91,7 @@ def do_render(force: bool = False) -> bool:
     with _render_lock:
         global _last_events, _last_events_hash
         settings = settings_store.load()
-        now = datetime.datetime.now()
+        now = _now()
 
         # Fetch events for the visible range
         if settings["view_mode"] == "month":
@@ -173,6 +201,14 @@ async def startup():
                 scheme, lan_ip, config.APP_PORT)
     logger.info("IT8951 binary: %s", config.IT8951_BINARY)
 
+    # Auto-detect timezone if not set
+    s = settings_store.load()
+    if not s.get("timezone"):
+        detected = _detect_timezone()
+        if detected:
+            settings_store.update({"timezone": detected})
+            logger.info("Timezone auto-detected: %s", detected)
+
     # Initial screen
     if not calendar_client.is_configured():
         ssl_on = " [HTTPS]" if config.SSL_ENABLED else ""
@@ -267,6 +303,7 @@ async def settings_page():
     sel_month = "selected" if s["view_mode"] == "month" else ""
     sel_week = "selected" if s["view_mode"] == "week" else ""
     sel_7days = "selected" if s["view_mode"] == "7days" else ""
+    tz = s.get("timezone", "")
 
     return _SETTINGS_HTML.format(
         auth_section=auth_section,
@@ -279,6 +316,7 @@ async def settings_page():
         tl_interval=s["time_line_interval_min"],
         poll_interval=s["event_poll_interval_sec"],
         brightness=s.get("brightness", 1.4),
+        timezone=tz,
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
         lan_ip=lan_ip,
@@ -295,6 +333,7 @@ class SettingsUpdate(BaseModel):
     time_line_interval_min: Optional[int] = None
     event_poll_interval_sec: Optional[int] = None
     brightness: Optional[float] = None
+    timezone: Optional[str] = None
 
 
 @app.post("/api/settings")
@@ -471,6 +510,10 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     <label>Brightness: {brightness}
       <input type="range" name="brightness" min="1.0" max="2.0" step="0.1" value="{brightness}">
     </label>
+    <label>Timezone
+      <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP" style="font-size:0.85em">
+      <span style="font-size:0.75em;color:#666">IANA name (e.g. Europe/Moscow). Empty = system default</span>
+    </label>
   </form>
 </div>
 
@@ -505,6 +548,7 @@ async function saveSettings() {{
     time_line_interval_min: parseInt(fd.get('time_line_interval_min')),
     event_poll_interval_sec: parseInt(fd.get('event_poll_interval_sec')),
     brightness: parseFloat(fd.get('brightness')),
+    timezone: fd.get('timezone') || '',
     selected_calendars: calIds,
   }};
   const r = await fetch('/api/settings', {{

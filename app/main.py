@@ -419,6 +419,10 @@ async def settings_page(request: Request):
         sel_tl_15='selected' if s['time_line_interval_min']==15 else '',
         sel_tl_30='selected' if s['time_line_interval_min']==30 else '',
         sel_tl_60='selected' if s['time_line_interval_min']==60 else '',
+        sel_fd_0='selected' if s['max_full_day_events']==0 else '',
+        sel_fd_1='selected' if s['max_full_day_events']==1 else '',
+        sel_fd_2='selected' if s['max_full_day_events']==2 else '',
+        sel_fd_3='selected' if s['max_full_day_events']==3 else '',
         poll_interval=s["event_poll_interval_sec"],
         brightness=s.get("brightness", 1.4),
         timezone=tz,
@@ -812,8 +816,13 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
       <div><label>Day Start <input type="time" name="day_start" value="{day_start}"></label></div>
       <div><label>Day End <input type="time" name="day_end" value="{day_end}"></label></div>
     </div>
-    <label>Max Full-Day Events (per day): {max_fd}
-      <input type="range" name="max_full_day_events" min="1" max="3" value="{max_fd}">
+    <label>Max Full-Day Events (per day)
+      <select name="max_full_day_events">
+        <option value="0" {sel_fd_0}>0 (hide)</option>
+        <option value="1" {sel_fd_1}>1</option>
+        <option value="2" {sel_fd_2}>2</option>
+        <option value="3" {sel_fd_3}>3</option>
+      </select>
     </label>
     <label>Update interval
       <select name="time_line_interval_min">

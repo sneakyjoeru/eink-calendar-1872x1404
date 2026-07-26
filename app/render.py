@@ -108,11 +108,27 @@ def render_calendar(view_mode: str, events: list[dict],
     if view_mode in ("week", "7days"):
         _draw_time_line(draw, now, view_mode, day_start, day_end, events)
 
-    # Settings URL (same line as subtitle, centered)
+    # Settings URL (centered between title and subtitle on header line)
     if settings_url:
         url_font = _font(28)
         uw = _text_w(draw, settings_url, url_font)
-        draw.text(((W - uw) // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
+        # Compute center between title right edge and subtitle left edge
+        font_title = _font(64, bold=True)
+        title_str = now.strftime(date_format) if date_format else (
+            now.strftime("%B %Y") if view_mode in ("month", "35days") else (
+            now.strftime("%B %d, %Y") if view_mode == "week" else "Next 7 Days"))
+        tw = _text_w(draw, title_str, font_title)
+        title_right = MARGIN + tw
+        font_sub = _font(36)
+        sub_str = f"Week {now.isocalendar()[1]}" if view_mode in ("week", "7days") else (
+            f"Week {now.isocalendar()[1]} — 35 days" if view_mode == "35days" else "")
+        if sub_str:
+            sw = _text_w(draw, sub_str, font_sub)
+            sub_left = W - MARGIN - sw
+        else:
+            sub_left = W - MARGIN
+        ip_center = (title_right + sub_left) // 2
+        draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
     return img
 
@@ -544,7 +560,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         gap = 6
         combined_w = dw + gap + dw2
         line_x = cx - combined_w // 2
-        line_y = grid_y - 46
+        line_y = grid_y - 42  # top of highlight box touches header line at y=110
 
         if d == today:
             bb_dow = draw.textbbox((0, 0), dow, font=dow_font)
@@ -824,29 +840,29 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
     x_end = x_start + col_w
 
     if now_min < ds_min:
-        # Before visible range — striped indicator at top edge
-        y = grid_y
+        # Before visible range — striped indicator at 15-min mark
+        y = int(grid_y + 15 * minute_h)
         # Striped pattern: alternating black/white vertical stripes across column width
         stripe_w = 6
         for sx in range(x_start, x_end, stripe_w * 2):
             draw.rectangle([sx, y - 4, sx + stripe_w, y + 4], fill=BLACK)
         # Time label pill
         time_str = now.strftime("%H:%M")
-        label_font = _font(18, bold=True)
+        label_font = _font(26, bold=True)
         lw = _text_w(draw, time_str, label_font)
         draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
         draw.text((x_end - lw - 4, y - 11), time_str, fill=BLACK, font=label_font)
         return
 
     if now_min > de_min:
-        # After visible range — striped indicator at bottom edge
-        y = grid_y + grid_h
+        # After visible range — striped indicator at 45-min mark
+        y = int(grid_y + grid_h - 15 * minute_h)
         stripe_w = 6
         for sx in range(x_start, x_end, stripe_w * 2):
             draw.rectangle([sx, y - 4, sx + stripe_w, y + 4], fill=BLACK)
         # Time label pill
         time_str = now.strftime("%H:%M")
-        label_font = _font(18, bold=True)
+        label_font = _font(26, bold=True)
         lw = _text_w(draw, time_str, label_font)
         draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
         draw.text((x_end - lw - 4, y - 11), time_str, fill=BLACK, font=label_font)
@@ -864,11 +880,11 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
 
     # Small time label at the right edge of the line
     time_str = now.strftime("%H:%M")
-    label_font = _font(18, bold=True)
+    label_font = _font(26, bold=True)
     lw = _text_w(draw, time_str, label_font)
     # Background pill
-    draw.rectangle([x_end - lw - 8, y - 12, x_end, y + 12], fill=WHITE, outline=BLACK, width=1)
-    draw.text((x_end - lw - 4, y - 10), time_str, fill=BLACK, font=label_font)
+    draw.rectangle([x_end - lw - 10, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
+    draw.text((x_end - lw - 6, y - 13), time_str, fill=BLACK, font=label_font)
 
 
 # ---- QR code screen (initial setup) ----

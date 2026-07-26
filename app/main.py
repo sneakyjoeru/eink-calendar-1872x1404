@@ -203,8 +203,13 @@ async def settings_page():
     lan_ip = _get_lan_ip()
 
     cals = []
+    cal_error = ""
     if authenticated:
         cals = calendar_client.list_calendars()
+        # Check if the result contains an error entry
+        if cals and cals[0].get("_error"):
+            cal_error = cals[0]["_error"]
+            cals = []
 
     cal_checkboxes = ""
     for cal in cals:
@@ -215,6 +220,20 @@ async def settings_page():
             <span class="cal-dot" style="background:{cal['color']}"></span>
             <span>{cal['summary']}</span>
         </label>"""
+    # Format error message for display
+    if cal_error:
+        # Extract helpful URL from the error message
+        help_url = ""
+        if "https://console.developers.google.com" in cal_error:
+            start = cal_error.find("https://console.developers.google.com")
+            end = cal_error.find(" ", start)
+            help_url = cal_error[start:end] if end > start else cal_error[start:]
+        cal_error = f'''
+        <div class="alert" style="margin-top:8px">
+          ⚠️ <b>Calendar API error</b><br>
+          <span style="font-size:0.8em">{cal_error[:200]}</span>
+          {f'<br><a href="{help_url}" target="_blank" style="color:#e94560;font-size:0.8em">Enable Calendar API →</a>' if help_url else ''}
+        </div>'''
 
     auth_section = ""
     if not configured:
@@ -261,6 +280,7 @@ async def settings_page():
         poll_interval=s["event_poll_interval_sec"],
         brightness=s.get("brightness", 1.4),
         cal_checkboxes=cal_checkboxes,
+        cal_error=cal_error,
         lan_ip=lan_ip,
         port=config.APP_PORT,
     )
@@ -457,11 +477,12 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 <div class="card">
   <h2>Calendars</h2>
   {cal_checkboxes}
+  {cal_error}
   <p style="font-size:0.75em;color:#666;margin-top:8px;">Empty selection = all calendars</p>
 </div>
 
-<button class="btn btn-primary" onclick="saveSettings()">💾 Save &amp; Render</button>
-<button class="btn btn-primary" style="background:#0f3460;margin-top:8px;" onclick="renderNow()">🔄 Render Now</button>
+<button type="button" class="btn btn-primary" onclick="saveSettings()">💾 Save &amp; Render</button>
+<button type="button" class="btn btn-primary" style="background:#0f3460;margin-top:8px;" onclick="renderNow()">🔄 Render Now</button>
 
 <div class="footer">
   E-Ink Calendar · {lan_ip}:{port} · 1872×1404 IT8951

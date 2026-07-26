@@ -132,8 +132,10 @@ def list_calendars() -> list[dict]:
             })
         return result
     except Exception as e:
-        logger.error("list_calendars failed: %s", e)
-        return []
+        msg = str(e).split("\n")[0][:300]
+        logger.error("list_calendars failed: %s", msg)
+        # Return error info so the caller can display it
+        return [{"_error": msg}]
 
 
 def fetch_events(start: datetime.datetime, end: datetime.datetime,

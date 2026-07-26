@@ -19,7 +19,7 @@ _DEFAULTS = {
     "time_format": "24h",         # "24h" or "12h"
 }
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 def load() -> dict:

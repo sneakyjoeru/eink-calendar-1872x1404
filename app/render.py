@@ -294,8 +294,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 while len(label) > 2 and _text_w(draw, label + "…", _font(18)) > col_w - 8:
                     label = label[:-1]
                 label += "…"
-            # Draw a filled bar
-            draw.rectangle([x + 4, ey, x + col_w - 4, ey + 20], fill=GRAY_LIGHT)
+            # Draw a filled bar (light grey bg, 1px black border)
+            draw.rectangle([x + 4, ey, x + col_w - 4, ey + 20], fill=GRAY_VLIGHT, outline=BLACK, width=1)
             draw.text((x + 8, ey + 1), label, fill=BLACK, font=_font(18))
 
     # Grid border
@@ -354,18 +354,18 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             ey_bot = grid_y + (ev_end_min - ds_min) * minute_h
             eh = max(ey_bot - ey_top, 18)
 
-            # Event block
+            # Event block (light grey bg, 1px black border, black text)
             draw.rectangle([x + 6, ey_top, x + col_w - 6, ey_top + eh - 1],
-                           fill=BLACK)
-            # Title text (white on black)
+                           fill=GRAY_VLIGHT, outline=BLACK, width=1)
+            # Title text (black on light grey)
             label = ev["summary"][:20]
             if eh > 24:
-                draw.text((x + 10, ey_top + 4), label, fill=WHITE, font=event_font)
+                draw.text((x + 10, ey_top + 4), label, fill=BLACK, font=event_font)
                 time_str = _ev_time_str(ev, now)
-                draw.text((x + 10, ey_top + eh - 20), time_str, fill=WHITE, font=event_font_sm)
+                draw.text((x + 10, ey_top + eh - 20), time_str, fill=BLACK, font=event_font_sm)
             else:
                 # Too short for two lines — just the title
-                draw.text((x + 10, ey_top + 2), label[:12], fill=WHITE, font=event_font_sm)
+                draw.text((x + 10, ey_top + 2), label[:12], fill=BLACK, font=event_font_sm)
 
 
 def _ev_minutes(ev: dict, now: datetime.datetime, start: bool = True) -> int:

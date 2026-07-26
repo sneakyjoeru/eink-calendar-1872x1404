@@ -184,8 +184,19 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
             x = grid_x + col * col_w
             y = grid_y + week * row_h
 
-            # Cell border
-            draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
+            # Cell border — strong at month boundaries (day+1 or day+7 = normal, else strong)
+            next_day = day_num + datetime.timedelta(days=1)
+            next_week = day_num + datetime.timedelta(days=7)
+            right_strong = col < 6 and next_day.month != day_num.month
+            bottom_strong = week < num_weeks - 1 and next_week.month != day_num.month
+            if right_strong or bottom_strong:
+                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
+                if right_strong:
+                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+                if bottom_strong:
+                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+            else:
+                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
 
             # Day number
             in_month = day_num.month == today.month
@@ -337,8 +348,19 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
             x = grid_x + col * col_w
             y = grid_y + week * row_h
 
-            # Cell border
-            draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
+            # Cell border — strong at month boundaries
+            next_day = day_num + datetime.timedelta(days=1)
+            next_week = day_num + datetime.timedelta(days=7)
+            right_strong = col < 6 and next_day.month != day_num.month
+            bottom_strong = week < num_weeks - 1 and next_week.month != day_num.month
+            if right_strong or bottom_strong:
+                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
+                if right_strong:
+                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+                if bottom_strong:
+                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+            else:
+                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
 
             # Day number
             is_today = day_num == today

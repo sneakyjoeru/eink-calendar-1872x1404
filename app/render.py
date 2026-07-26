@@ -482,26 +482,24 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             eh = max(ey_bot - ey_top, 18)
             ev_infos.append((ev, ey_top, ey_bot, eh, ev_end_min - ev_start_min))
 
-        # Calculate horizontal splits for all events
+        # Calculate horizontal splits for all events — checks ALL overlaps, not just neighbors
         SHRINK = 6  # ~1mm at 150 DPI
         draw_infos = []  # (ev, ey_top, ey_bot, eh, duration, xl, xr)
         for idx, (ev, ey_top, ey_bot, eh, duration) in enumerate(ev_infos):
-            overlap_prev = idx > 0 and ev_infos[idx - 1][2] > ey_top
-            overlap_next = idx + 1 < len(ev_infos) and ey_bot > ev_infos[idx + 1][1]
+            # Find ALL overlapping events
+            overlap_idxs = []
+            for j, (_, j_top, j_bot, _, _) in enumerate(ev_infos):
+                if j != idx and ey_top < j_bot and ey_bot > j_top:
+                    overlap_idxs.append(j)
 
-            if overlap_prev or overlap_next:
-                if overlap_prev:
-                    prev_dur = ev_infos[idx - 1][4]
-                    if duration >= prev_dur:
-                        xl, xr = x + 6, x + col_w - 6 - SHRINK
-                    else:
-                        xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
+            if overlap_idxs:
+                # Use the nearest overlapping event (by index) for split direction
+                closest = min(overlap_idxs, key=lambda j: abs(j - idx))
+                other_dur = ev_infos[closest][4]
+                if duration >= other_dur:
+                    xl, xr = x + 6, x + col_w - 6 - SHRINK
                 else:
-                    next_dur = ev_infos[idx + 1][4]
-                    if duration >= next_dur:
-                        xl, xr = x + 6, x + col_w - 6 - SHRINK
-                    else:
-                        xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
+                    xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
             else:
                 xl, xr = x + 4, x + col_w - 4
             draw_infos.append((ev, ey_top, ey_bot, eh, duration, xl, xr))

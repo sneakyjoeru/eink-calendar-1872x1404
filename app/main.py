@@ -188,6 +188,8 @@ def do_render(force: bool = False) -> bool:
             time_format=settings.get("time_format", "24h"),
             date_format=settings.get("date_format", ""),
             settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
+            crossed_event_dim=settings.get("crossed_event_dim", False),
+            dim_past_events=settings.get("dim_past_events", False),
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
@@ -380,6 +382,12 @@ async def settings_page(request: Request):
     sel_df_B_d_Y = 'selected' if date_fmt == '%B %d, %Y' else ''
     sel_df_Ymd_a = 'selected' if date_fmt == '%Y.%m.%d %a' else ''
     sel_df_d_B_Y = 'selected' if date_fmt == '%d %B %Y' else ''
+    sel_df_a_b_d = 'selected' if date_fmt == '%a %b %d' else ''
+    sel_df_d_m_Y = 'selected' if date_fmt == '%d.%m.%Y' else ''
+    sel_df_m_d_Y = 'selected' if date_fmt == '%m/%d/%Y' else ''
+    sel_df_AB_d = 'selected' if date_fmt == '%A, %B %d' else ''
+    dim_past = s.get("dim_past_events", False)
+    crossed_dim = s.get("crossed_event_dim", False)
 
     return _SETTINGS_HTML.format(
         saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
@@ -403,6 +411,12 @@ async def settings_page(request: Request):
         sel_df_B_d_Y=sel_df_B_d_Y,
         sel_df_Ymd_a=sel_df_Ymd_a,
         sel_df_d_B_Y=sel_df_d_B_Y,
+        sel_df_a_b_d=sel_df_a_b_d,
+        sel_df_d_m_Y=sel_df_d_m_Y,
+        sel_df_m_d_Y=sel_df_m_d_Y,
+        sel_df_AB_d=sel_df_AB_d,
+        dim_past='checked' if dim_past else '',
+        crossed_dim='checked' if crossed_dim else '',
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
         lan_ip=lan_ip,
@@ -438,6 +452,8 @@ async def update_settings(request: Request):
         "timezone": fd.get("timezone", ""),
         "time_format": fd.get("time_format", "24h"),
         "date_format": fd.get("date_format", ""),
+        "crossed_event_dim": fd.get("crossed_event_dim") == "1",
+        "dim_past_events": fd.get("dim_past_events") == "1",
         "selected_calendars": fd.getlist("selected_calendars"),
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
@@ -784,6 +800,10 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     </label>
     <label>Brightness: {brightness}
       <input type="range" name="brightness" min="1.0" max="2.0" step="0.1" value="{brightness}">
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim} style="width:auto">
+      <span>Dim events when time line crosses them</span>
     </label>
     <label>Timezone
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP" style="font-size:0.85em">

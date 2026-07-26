@@ -18,6 +18,8 @@ _DEFAULTS = {
     "timezone": "",               # IANA timezone, empty = system default
     "time_format": "24h",         # "24h" or "12h"
     "date_format": "",            # strftime format: "" | "%B %Y" | "%B %d, %Y" | "%Y.%m.%d %a" | "%d %B %Y"
+    "dim_past_events": False,     # dim past events on the display
+    "crossed_event_dim": False,   # dim events when time line crosses them
 }
 
 _lock = threading.RLock()

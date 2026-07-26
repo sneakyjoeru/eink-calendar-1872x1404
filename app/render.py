@@ -69,6 +69,8 @@ def render_calendar(view_mode: str, events: list[dict],
                     max_full_day: int, time_format: str = "24h",
                     date_format: str = "",
                     settings_url: str = "",
+                    crossed_event_dim: bool = False,
+                    dim_past_events: bool = False,
                     now: Optional[datetime.datetime] = None) -> Image.Image:
     """Render the full calendar view to a PIL Image.
 
@@ -88,9 +90,11 @@ def render_calendar(view_mode: str, events: list[dict],
     elif view_mode == "35days":
         _render_35days(draw, events, now, max_full_day, date_format=date_format)
     elif view_mode == "7days":
-        _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format)
+        _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
+                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
     else:  # week (default)
-        _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format)
+        _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
 
     # Draw current-time line on week/7days views
     if view_mode in ("week", "7days"):
@@ -204,13 +208,23 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
             color = BLACK if in_month else GRAY_MID
             day_str = str(day_num.day)
             if is_today:
-                # Highlight today with a filled rectangle (3px padding around text)
-                bb = draw.textbbox((0, 0), day_str, font=cell_font)
-                tw = bb[2] - bb[0]
-                pad = 3
-                rx = x + 10 - pad
-                ry = y + 6 + bb[1] - pad
-                draw.rectangle([rx, ry, rx + tw + pad * 2, ry + (bb[3] - bb[1]) + pad * 2], fill=BLACK)
+                # Highlight today — fill entire cell horizontally + dotted border
+                draw.rectangle([x + 1, y + 6, x + col_w - 2, y + row_h - 2], fill=BLACK)
+                # Dotted border: 3px diameter dots, 3px spacing
+                dot_r = 1  # radius 1.5 ≈ 3px diameter
+                dot_step = 6  # 3px dot + 3px spacing
+                # Top edge
+                for dx in range(2, col_w - 1, dot_step):
+                    draw.ellipse([x + dx - dot_r, y + 4 - dot_r, x + dx + dot_r, y + 4 + dot_r], fill=WHITE)
+                # Bottom edge
+                for dx in range(2, col_w - 1, dot_step):
+                    draw.ellipse([x + dx - dot_r, y + row_h - 4 - dot_r, x + dx + dot_r, y + row_h - 4 + dot_r], fill=WHITE)
+                # Left edge
+                for dy in range(8, row_h - 7, dot_step):
+                    draw.ellipse([x + 2 - dot_r, y + dy - dot_r, x + 2 + dot_r, y + dy + dot_r], fill=WHITE)
+                # Right edge
+                for dy in range(8, row_h - 7, dot_step):
+                    draw.ellipse([x + col_w - 3 - dot_r, y + dy - dot_r, x + col_w - 3 + dot_r, y + dy + dot_r], fill=WHITE)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
@@ -345,7 +359,7 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
             day_num += datetime.timedelta(days=1)
 
 
-def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format=""):
+def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False):
     """Week view — 7 day columns with timed events stacked vertically."""
     if date_format:
         title = now.strftime(date_format)
@@ -354,11 +368,12 @@ def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_f
     week_num = now.isocalendar()[1]
     _draw_header(draw, title, f"Week {week_num}")
 
-    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, date_format=date_format)
+    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, date_format=date_format,
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
 
 
 # ---- 7-days view (next 7 days starting today) ----
-def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format=""):
+def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False):
     """7-days view — starting from today, 7 consecutive day columns."""
     if date_format:
         title = now.strftime(date_format)
@@ -366,10 +381,11 @@ def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_
         title = "Next 7 Days"
     _draw_header(draw, title, now.strftime("%a %b %d"))
 
-    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format)
+    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format,
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
 
 
-def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format=""):
+def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False):
     """Shared day-grid renderer for week and 7-days views."""
     today = now.date()
 
@@ -486,12 +502,12 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             ey_top = grid_y + (ev_start_min - ds_min) * minute_h
             ey_bot = grid_y + (ev_end_min - ds_min) * minute_h
             eh = max(ey_bot - ey_top, 18)
-            ev_infos.append((ev, ey_top, ey_bot, eh, ev_end_min - ev_start_min))
+            ev_infos.append((ev, ey_top, ey_bot, eh, ev_end_min - ev_start_min, ev_start_min, ev_end_min))
 
         # Calculate horizontal splits for all events — checks ALL overlaps, not just neighbors
         SHRINK = 6  # ~1mm at 150 DPI
-        draw_infos = []  # (ev, ey_top, ey_bot, eh, duration, xl, xr)
-        for idx, (ev, ey_top, ey_bot, eh, duration) in enumerate(ev_infos):
+        draw_infos = []  # (ev, ey_top, ey_bot, eh, duration, xl, xr, start_min, end_min)
+        for idx, (ev, ey_top, ey_bot, eh, duration, s_min, e_min) in enumerate(ev_infos):
             # Find ALL overlapping events
             overlap_idxs = []
             for j, (_, j_top, j_bot, _, _) in enumerate(ev_infos):
@@ -508,17 +524,27 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
             else:
                 xl, xr = x + 4, x + col_w - 4
-            draw_infos.append((ev, ey_top, ey_bot, eh, duration, xl, xr))
+            draw_infos.append((ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min))
 
         # Draw boxes: longest first so shorter events render ON TOP
+        now_min_total = now.hour * 60 + now.minute
+        GRAY_DIM = (153, 153, 153)  # 3/5 of max darkness
         for info in sorted(draw_infos, key=lambda e: -e[4]):
-            ev, ey_top, ey_bot, eh, duration, xl, xr = info
+            ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min = info
+            is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
+            is_past = dim_past_events and e_min <= now_min_total
+            if is_crossed:
+                box_fill, box_outline = WHITE, GRAY_DIM
+            elif is_past:
+                box_fill, box_outline = GRAY_LIGHT, GRAY_MID
+            else:
+                box_fill, box_outline = GRAY_VLIGHT, BLACK
             draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
-                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
+                                   fill=box_fill, outline=box_outline, width=2)
 
         # Draw text: line-by-line, skipping only lines fully inside overlap zones
         line_h = 26
-        for ev, ey_top, ey_bot, eh, duration, xl, xr in draw_infos:
+        for ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min in draw_infos:
             summary = ev.get("summary", "")
             time_str = _ev_time_str(ev, now)
             avail_w = xr - xl - 8
@@ -539,17 +565,19 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
             # Collect overlap ranges from shorter events
             overlap_ranges = []
-            for o_ev, o_top, o_bot, o_eh, o_dur, o_xl, o_xr in draw_infos:
+            for o_ev, o_top, o_bot, o_eh, o_dur, o_xl, o_xr, _, _ in draw_infos:
                 if o_dur < duration and o_top < ey_bot and o_bot > ey_top:
                     overlap_ranges.append((o_top, o_bot))
 
-            # Render each line, skipping y-positions fully inside overlap ranges
+            is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
+            is_past = dim_past_events and e_min <= now_min_total
+            text_fill = GRAY_DIM if (is_crossed or is_past) else BLACK
+
             y = ey_top + 4
             for text, is_time in render_lines:
                 if not text:
                     y += 4
                     continue
-                # Find a safe y (not fully inside any overlap)
                 while True:
                     blocked = False
                     for o_top, o_bot in overlap_ranges:
@@ -563,7 +591,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         break
                 if y + line_h > ey_bot - 4:
                     break  # No room
-                draw.text((txt_x, y), text, fill=BLACK, font=event_font)
+                draw.text((txt_x, y), text, fill=text_fill, font=event_font)
                 y += line_h
 
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)

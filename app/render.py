@@ -473,36 +473,69 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
     event_font = _font(20)
     event_font_sm = _font(16)
+    SHRINK_PX = 6  # ~1mm at 150 DPI
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
         day_events = sorted(timed_events_by_date.get(d, []), key=lambda e: _ev_minutes(e, now))
+        if not day_events:
+            continue
 
+        # Pre-compute positions for all events in this day column
+        positions = []  # (ev, ey_top, ey_bot, eh, duration_min)
         for ev in day_events:
             ev_start_min = _ev_minutes(ev, now, start=True)
             ev_end_min = _ev_minutes(ev, now, start=False)
-            # Clamp to visible range
             ev_start_min = max(ev_start_min, ds_min)
             ev_end_min = min(ev_end_min, de_min)
             if ev_end_min <= ev_start_min:
                 continue
-
             ey_top = grid_y + (ev_start_min - ds_min) * minute_h
             ey_bot = grid_y + (ev_end_min - ds_min) * minute_h
             eh = max(ey_bot - ey_top, 18)
+            positions.append((ev, ey_top, ey_bot, eh, ev_end_min - ev_start_min))
 
-            # Event block (light grey bg, 2px black border, black text)
-            draw.rectangle([x + 6, ey_top, x + col_w - 6, ey_top + eh - 1],
-                           fill=GRAY_VLIGHT, outline=BLACK, width=2)
-            # Title text (black on light grey)
-            label = ev["summary"][:20]
-            if eh > 24:
-                draw.text((x + 10, ey_top + 4), label, fill=BLACK, font=event_font)
-                time_str = _ev_time_str(ev, now)
-                draw.text((x + 10, ey_top + eh - 20), time_str, fill=BLACK, font=event_font_sm)
+        # Draw each event, splitting horizontally when overlapping
+        for idx, (ev, ey_top, ey_bot, eh, duration) in enumerate(positions):
+            # Detect vertical overlap with neighbours
+            overlap_prev = idx > 0 and positions[idx - 1][2] > ey_top
+            overlap_next = idx + 1 < len(positions) and ey_bot > positions[idx + 1][1]
+
+            if overlap_prev or overlap_next:
+                if overlap_prev:
+                    prev_dur = positions[idx - 1][4]
+                    if duration >= prev_dur:
+                        # Larger/equal → left side, shrunk from right
+                        xl = x + 6
+                        xr = x + col_w - 6 - SHRINK_PX
+                    else:
+                        # Smaller → right side, shrunk from left
+                        xl = x + 6 + SHRINK_PX
+                        xr = x + col_w - 6
+                else:  # overlap_next only
+                    next_dur = positions[idx + 1][4]
+                    if duration >= next_dur:
+                        xl = x + 6
+                        xr = x + col_w - 6 - SHRINK_PX
+                    else:
+                        xl = x + 6 + SHRINK_PX
+                        xr = x + col_w - 6
             else:
-                # Too short for two lines — just the title
-                draw.text((x + 10, ey_top + 2), label[:12], fill=BLACK, font=event_font_sm)
+                xl = x + 6
+                xr = x + col_w - 6
+
+            # Draw event box with adjusted horizontal position
+            draw.rectangle([xl, ey_top, xr, ey_top + eh - 1],
+                           fill=GRAY_VLIGHT, outline=BLACK, width=2)
+            # Title text
+            label = ev["summary"][:20]
+            avail_w = xr - xl - 8
+            if eh > 24:
+                draw.text((xl + 4, ey_top + 4), label, fill=BLACK, font=event_font)
+                time_str = _ev_time_str(ev, now)
+                draw.text((xl + 4, ey_top + eh - 20), time_str, fill=BLACK, font=event_font_sm)
+            else:
+                draw.text((xl + 4, ey_top + 2), label[:12], fill=BLACK, font=event_font_sm)
 
 
 def _ev_minutes(ev: dict, now: datetime.datetime, start: bool = True) -> int:

@@ -392,7 +392,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
         dow = d.strftime("%a")
         dw = _text_w(draw, dow, dow_font)
-        draw.text((cx - dw // 2, grid_y - 50), dow, fill=GRAY_DARK, font=dow_font)
+        draw.text((cx - dw // 2, grid_y - 56), dow, fill=GRAY_DARK, font=dow_font)
 
         date_str = str(d.day)
         dw2 = _text_w(draw, date_str, date_font)
@@ -403,11 +403,11 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             th = _text_h(draw, date_str, date_font)
             pad = 3
             tx = cx - dw2 // 2
-            ty = grid_y - 20
+            ty = grid_y - 26
             draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
             draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
         else:
-            draw.text((cx - dw2 // 2, grid_y - 22), date_str, fill=color, font=date_font)
+            draw.text((cx - dw2 // 2, grid_y - 28), date_str, fill=color, font=date_font)
 
     # Full-day events strip (above the time grid)
     fd_y = HEADER_H + 10
@@ -425,15 +425,17 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         x = grid_x + i * col_w
         fd_list = fd_events_by_date.get(d, [])
         for j, ev in enumerate(fd_list[:max_full_day]):
-            ey = fd_y + j * 24
+            ey = fd_y + j * 28
             label = ev["summary"][:15]
-            if _text_w(draw, label + "…", _font(18)) > col_w - 8:
-                while len(label) > 2 and _text_w(draw, label + "…", _font(18)) > col_w - 8:
+            fd_font = _font(20)
+            if _text_w(draw, label + "…", fd_font) > col_w - 8:
+                while len(label) > 2 and _text_w(draw, label + "…", fd_font) > col_w - 8:
                     label = label[:-1]
                 label += "…"
-            # Draw a filled bar (light grey bg, 2px black border)
-            draw.rectangle([x + 4, ey, x + col_w - 4, ey + 20], fill=GRAY_VLIGHT, outline=BLACK, width=2)
-            draw.text((x + 8, ey + 1), label, fill=BLACK, font=_font(18))
+            # Draw a filled bar (light grey bg, 2px black border) with +2px top/bot
+            draw.rounded_rectangle([x + 4, ey - 2, x + col_w - 4, ey + 22], radius=6,
+                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
+            draw.text((x + 8, ey + 1), label, fill=BLACK, font=fd_font)
 
     # Grid border
     draw.rectangle([grid_x, grid_y, grid_x + days * col_w - 1, grid_y + grid_h - 1],
@@ -471,8 +473,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             d = d.date()
         timed_events_by_date.setdefault(d, []).append(ev)
 
-    event_font = _font(20)
-    event_font_sm = _font(16)
+    event_font = _font(22)
+    event_font_sm = _font(18)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
@@ -510,7 +512,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         xr = x + col_w - 6 - SHRINK
                     else:
                         # Smaller → right side, shrunk from left
-                        xl = x + 6 + SHRINK * 2
+                        xl = x + 6 + SHRINK * 3
                         xr = x + col_w - 4
                 else:  # overlap_next only
                     next_dur = ev_infos[idx + 1][4]
@@ -518,21 +520,21 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         xl = x + 6
                         xr = x + col_w - 6 - SHRINK
                     else:
-                        xl = x + 6 + SHRINK * 2
+                        xl = x + 6 + SHRINK * 3
                         xr = x + col_w - 4
             else:
                 xl = x + 6
                 xr = x + col_w - 6
 
-            draw.rectangle([xl, ey_top, xr, ey_top + eh - 1],
-                           fill=GRAY_VLIGHT, outline=BLACK, width=2)
-            label = ev["summary"][:20]
+            draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
+                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
+            label = ev["summary"][:25]
             if eh > 24:
                 draw.text((xl + 4, ey_top + 4), label, fill=BLACK, font=event_font)
                 time_str = _ev_time_str(ev, now)
                 draw.text((xl + 4, ey_top + eh - 20), time_str, fill=BLACK, font=event_font_sm)
             else:
-                draw.text((xl + 4, ey_top + 2), label[:12], fill=BLACK, font=event_font_sm)
+                draw.text((xl + 4, ey_top + 2), label[:15], fill=BLACK, font=event_font_sm)
 
 
 def _ev_minutes(ev: dict, now: datetime.datetime, start: bool = True) -> int:

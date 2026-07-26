@@ -791,8 +791,6 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
     de_min = de_h * 60 + de_m
 
     now_min = now.hour * 60 + now.minute
-    if now_min < ds_min or now_min > de_min:
-        return  # Outside visible range
 
     days = 7
 
@@ -817,9 +815,39 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
         span_min = 16 * 60
     minute_h = grid_h / span_min
 
-    y = grid_y + (now_min - ds_min) * minute_h
     x_start = grid_x + col_index * col_w
     x_end = x_start + col_w
+
+    if now_min < ds_min:
+        # Before visible range — striped indicator at top edge
+        y = grid_y
+        # Striped pattern: alternating black/white vertical stripes across column width
+        stripe_w = 6
+        for sx in range(x_start, x_end, stripe_w * 2):
+            draw.rectangle([sx, y - 4, sx + stripe_w, y + 4], fill=BLACK)
+        # Time label pill
+        time_str = now.strftime("%H:%M")
+        label_font = _font(18)
+        lw = _text_w(draw, time_str, label_font)
+        draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
+        draw.text((x_end - lw - 4, y - 11), time_str, fill=BLACK, font=label_font)
+        return
+
+    if now_min > de_min:
+        # After visible range — striped indicator at bottom edge
+        y = grid_y + grid_h
+        stripe_w = 6
+        for sx in range(x_start, x_end, stripe_w * 2):
+            draw.rectangle([sx, y - 4, sx + stripe_w, y + 4], fill=BLACK)
+        # Time label pill
+        time_str = now.strftime("%H:%M")
+        label_font = _font(18)
+        lw = _text_w(draw, time_str, label_font)
+        draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
+        draw.text((x_end - lw - 4, y - 11), time_str, fill=BLACK, font=label_font)
+        return
+
+    y = grid_y + (now_min - ds_min) * minute_h
 
     # White outline (1px above and below the black line)
     draw.line([(x_start, y - 3), (x_end, y - 3)], fill=WHITE, width=1)

@@ -226,7 +226,7 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
                 # Dotted cell border — black dots on the cell outline for eye-catching
                 dot_step = 27
-                dot_r = 2  # 5px diameter for visibility
+                dot_r = 4  # 5px diameter for visibility
                 for dx in range(2, col_w - 1, dot_step):
                     draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
                     draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
@@ -349,7 +349,7 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
                 # Dotted cell border — black dots on the cell outline
                 dot_step = 27
-                dot_r = 2
+                dot_r = 4
                 for dx in range(2, col_w - 1, dot_step):
                     draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
                     draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)

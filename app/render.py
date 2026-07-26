@@ -181,7 +181,8 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
 
     # Grid cells
     cell_font = _font(32, bold=True)
-    event_font = _font(20)
+    event_font = _font(22)
+    event_bold = _font(22, bold=True)
     day_num = grid_start
     for week in range(num_weeks):
         for col in range(7):
@@ -244,21 +245,23 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
             visible_events = [ev for ev in day_events if ev.get("summary", "") not in ("", "(No title)")]
             ey = y + 48
             ev_idx = 0
-            while ev_idx < len(visible_events) and ey + 24 <= y + row_h - 4:
+            while ev_idx < len(visible_events) and ey + 26 <= y + row_h - 4:
                 ev = visible_events[ev_idx]
                 ev_time = _ev_time_str(ev, now)
-                base = f"{ev_time} {ev['summary']}" if ev_time else ev["summary"]
-                wrapped = _wrap_text_lines(draw, base, event_font, cell_avail_w)
-                for line in wrapped:
-                    if ey + 24 > y + row_h - 4:
-                        remaining = len(visible_events) - ev_idx
-                        draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
-                        break
-                    draw.text((x + 8, ey), line, fill=GRAY_DARK, font=event_font)
-                    ey += 24
+                if ev_time:
+                    time_w = _text_w(draw, ev_time + " ", event_bold)
+                    draw.text((x + 8, ey), ev_time + " ", fill=GRAY_DARK, font=event_bold)
+                    name = ev["summary"]
+                    if time_w + _text_w(draw, name, event_font) > cell_avail_w:
+                        while len(name) > 2 and time_w + _text_w(draw, name + "…", event_font) > cell_avail_w:
+                            name = name[:-1]
+                        name += "…"
+                    draw.text((x + 8 + time_w, ey), name, fill=GRAY_DARK, font=event_font)
+                else:
+                    draw.text((x + 8, ey), ev["summary"][:int(cell_avail_w / 11)], fill=GRAY_DARK, font=event_font)
+                ey += 26
                 ev_idx += 1
-            # Show +counter if events remain that couldn't fit at all
-            if ev_idx < len(visible_events) and ey + 24 > y + row_h - 4:
+            if ev_idx < len(visible_events) and ey + 26 > y + row_h - 4:
                 remaining = len(visible_events) - ev_idx
                 draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
 
@@ -310,7 +313,8 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
 
     # Grid cells
     cell_font = _font(32, bold=True)
-    event_font = _font(20)
+    event_font = _font(22)
+    event_bold = _font(22, bold=True)
     day_num = start_date
     for week in range(num_weeks):
         for col in range(7):
@@ -363,22 +367,24 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
             visible_events = [ev for ev in day_events if ev.get("summary", "") not in ("", "(No title)")]
             ey = y + 48
             ev_idx = 0
-            while ev_idx < len(visible_events) and ey + 24 <= y + row_h - 4:
+            while ev_idx < len(visible_events) and ey + 26 <= y + row_h - 4:
                 ev = visible_events[ev_idx]
                 ev_time = _ev_time_str(ev, now)
-                base = f"{ev_time} {ev['summary']}" if ev_time else ev["summary"]
-                wrapped = _wrap_text_lines(draw, base, event_font, cell_avail_w)
-                for line in wrapped:
-                    if ey + 24 > y + row_h - 4:
-                        remaining = len(visible_events) - ev_idx
-                        draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
-                        break
-                    draw.text((x + 8, ey), line, fill=GRAY_DARK, font=event_font)
-                    ey += 24
+                if ev_time:
+                    time_w = _text_w(draw, ev_time + " ", event_bold)
+                    draw.text((x + 8, ey), ev_time + " ", fill=GRAY_DARK, font=event_bold)
+                    name = ev["summary"]
+                    if time_w + _text_w(draw, name, event_font) > cell_avail_w:
+                        while len(name) > 2 and time_w + _text_w(draw, name + "…", event_font) > cell_avail_w:
+                            name = name[:-1]
+                        name += "…"
+                    draw.text((x + 8 + time_w, ey), name, fill=GRAY_DARK, font=event_font)
+                else:
+                    draw.text((x + 8, ey), ev["summary"][:int(cell_avail_w / 11)], fill=GRAY_DARK, font=event_font)
+                ey += 26
                 ev_idx += 1
-            # Ensure +counter when some events couldn't fit at all
             remaining = len(visible_events) - ev_idx
-            if remaining > 0 and ey + 24 > y + row_h - 4:
+            if remaining > 0 and ey + 26 > y + row_h - 4:
                 draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
 
             day_num += datetime.timedelta(days=1)

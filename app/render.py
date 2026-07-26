@@ -224,15 +224,25 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
                 rect_bot = y + 6 + bb[3] + pad
                 draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
-                # Dotted cell border — black dots on the cell outline for eye-catching
+                # Dotted cell border — skip edges that already have strong month-boundary line
+                prev_day = day_num - datetime.timedelta(days=1)
+                prev_week = day_num - datetime.timedelta(days=7)
+                left_strong = col > 0 and prev_day.month != day_num.month
+                top_strong = week > 0 and prev_week.month != day_num.month
                 dot_step = 27
-                dot_r = 4  # 5px diameter for visibility
-                for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
-                    draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
-                for dy in range(dot_step, row_h - 2, dot_step):
-                    draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
-                    draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
+                dot_r = 4
+                if not top_strong:
+                    for dx in range(2, col_w - 1, dot_step):
+                        draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
+                if not bottom_strong:
+                    for dx in range(2, col_w - 1, dot_step):
+                        draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
+                if not left_strong:
+                    for dy in range(dot_step, row_h - 2, dot_step):
+                        draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
+                if not right_strong:
+                    for dy in range(dot_step, row_h - 2, dot_step):
+                        draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
 
@@ -347,15 +357,25 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
                 rect_bot = y + 6 + bb[3] + pad
                 draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
                 draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
-                # Dotted cell border — black dots on the cell outline
+                # Dotted cell border — skip edges with strong month-boundary lines
+                prev_day = day_num - datetime.timedelta(days=1)
+                prev_week = day_num - datetime.timedelta(days=7)
+                left_strong = col > 0 and prev_day.month != day_num.month
+                top_strong = week > 0 and prev_week.month != day_num.month
                 dot_step = 27
                 dot_r = 4
-                for dx in range(2, col_w - 1, dot_step):
-                    draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
-                    draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
-                for dy in range(dot_step, row_h - 2, dot_step):
-                    draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
-                    draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
+                if not top_strong:
+                    for dx in range(2, col_w - 1, dot_step):
+                        draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
+                if not bottom_strong:
+                    for dx in range(2, col_w - 1, dot_step):
+                        draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
+                if not left_strong:
+                    for dy in range(dot_step, row_h - 2, dot_step):
+                        draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
+                if not right_strong:
+                    for dy in range(dot_step, row_h - 2, dot_step):
+                        draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)
 

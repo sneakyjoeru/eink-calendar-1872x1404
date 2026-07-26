@@ -552,26 +552,25 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
         dow = d.strftime("%a")
         date_str = str(d.day)
-        if is_before_day and d == today:
-            date_str = str(d.day) + "  "  # shift left when indicator at top edge
 
         dw = _text_w(draw, dow, dow_font)
         dw2 = _text_w(draw, date_str, date_font)
         gap = 6
         combined_w = dw + gap + dw2
         line_x = cx - combined_w // 2
-        line_y = grid_y - 42  # top of highlight box touches header line at y=110
 
         if d == today:
             bb_dow = draw.textbbox((0, 0), dow, font=dow_font)
             bb_date = draw.textbbox((0, 0), date_str, font=date_font)
             pad = 4
-            rect_top = line_y + min(bb_dow[1], bb_date[1]) - pad
+            line_y = 110 - min(bb_dow[1], bb_date[1]) + pad
+            rect_top = 110
             rect_bot = line_y + max(bb_dow[3], bb_date[3]) + pad
             draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
             draw.text((line_x, line_y), dow, fill=WHITE, font=dow_font)
             draw.text((line_x + dw + gap, line_y), date_str, fill=WHITE, font=date_font)
         else:
+            line_y = grid_y - 44
             draw.text((line_x, line_y), dow, fill=GRAY_DARK, font=dow_font)
             draw.text((line_x + dw + gap, line_y), date_str, fill=BLACK, font=date_font)
 

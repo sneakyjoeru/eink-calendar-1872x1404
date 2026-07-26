@@ -10,6 +10,7 @@ import logging
 import socket
 import threading
 import time
+from pathlib import Path
 
 from fastapi import FastAPI, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
@@ -41,6 +42,11 @@ def _get_lan_ip() -> str:
         return ip
     except Exception:
         return "192.168.0.199"
+
+
+def _scheme() -> str:
+    """Return 'https' if SSL is enabled, else 'http'."""
+    return "https" if config.SSL_ENABLED else "http"
 
 
 def _events_hash(events: list[dict]) -> str:
@@ -103,7 +109,7 @@ def render_setup_screen() -> bool:
     """Show QR code + LAN IP on the e-ink for initial setup."""
     lan_ip = _get_lan_ip()
     port = config.APP_PORT
-    url = f"http://{lan_ip}:{port}/settings"
+    url = f"{_scheme()}://{lan_ip}:{port}/settings"
     img = render.render_qr_setup(url, lan_ip, port)
     return driver.render_to_screen(img, brightness=1.0)
 
@@ -160,13 +166,16 @@ def background_loop():
 async def startup():
     """Start background scheduler + initial render."""
     lan_ip = _get_lan_ip()
-    logger.info("E-Ink Calendar starting on %s:%d (LAN: %s:%d)",
-                config.APP_HOST, config.APP_PORT, lan_ip, config.APP_PORT)
+    scheme = _scheme()
+    logger.info("E-Ink Calendar starting on %s://%s:%d (LAN: %s://%s:%d)",
+                scheme, config.APP_HOST, config.APP_PORT,
+                scheme, lan_ip, config.APP_PORT)
     logger.info("IT8951 binary: %s", config.IT8951_BINARY)
 
     # Initial screen
     if not calendar_client.is_configured():
-        img = render.render_setup_required(lan_ip, config.APP_PORT)
+        ssl_on = " [HTTPS]" if config.SSL_ENABLED else ""
+        img = render.render_setup_required(lan_ip, config.APP_PORT, ssl=config.SSL_ENABLED)
         driver.render_to_screen(img, brightness=1.0)
     elif not calendar_client.is_authenticated():
         render_setup_screen()
@@ -274,7 +283,7 @@ async def status():
 async def auth_start(request: Request):
     """Start Google OAuth flow."""
     lan_ip = _get_lan_ip()
-    redirect_uri = f"http://{lan_ip}:{config.APP_PORT}/auth/callback"
+    redirect_uri = f"{_scheme()}://{lan_ip}:{config.APP_PORT}/auth/callback"
     try:
         auth_url = calendar_client.start_auth(redirect_uri)
         return RedirectResponse(url=auth_url)
@@ -424,7 +433,21 @@ async function renderNow() {{
 def main():
     """Entry point — run the FastAPI app with uvicorn."""
     import uvicorn
-    uvicorn.run(app, host=config.APP_HOST, port=config.APP_PORT, log_level="info")
+
+    # Generate SSL cert on first run
+    if config.SSL_ENABLED:
+        config.ensure_ssl_cert()
+
+    ssl_kwargs = {}
+    if config.SSL_ENABLED:
+        cert_path = Path(config.SSL_CERT)
+        key_path = Path(config.SSL_KEY)
+        if cert_path.exists() and key_path.exists():
+            ssl_kwargs["ssl_certfile"] = str(cert_path)
+            ssl_kwargs["ssl_keyfile"] = str(key_path)
+
+    uvicorn.run(app, host=config.APP_HOST, port=config.APP_PORT,
+                log_level="info", **ssl_kwargs)
 
 
 if __name__ == "__main__":

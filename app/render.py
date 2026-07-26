@@ -506,12 +506,13 @@ def render_status(message: str, submessage: str = "") -> Image.Image:
     return img
 
 
-def render_setup_required(lan_ip: str, port: int) -> Image.Image:
+def render_setup_required(lan_ip: str, port: int, ssl: bool = False) -> Image.Image:
     """Render the 'Setup Required' screen with Google OAuth instructions.
 
-    Uses 3× supersampling + LANCZOS downscale for smooth antialiased text,
+    Uses 3x supersampling + LANCZOS downscale for smooth antialiased text,
     matching the C IT8951 driver's text rendering technique.
     """
+    scheme = "https" if ssl else "http"
     scale = 3
     sw, sh = W * scale, H * scale
 
@@ -542,7 +543,7 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
         ("text", "Enable Google Calendar API"),
         ("text", "Credentials > Create > OAuth client ID"),
         ("text", "Type: Web application"),
-        ("text", f"Redirect URI: http://{lan_ip}:{port}/auth/callback"),
+        ("text", f"Redirect URI: {scheme}://{lan_ip}:{port}/auth/callback"),
         ("text", "Download client_secret.json"),
         ("blank", ""),
         ("step", "2. Upload to Pi"),
@@ -553,7 +554,7 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
         ("blank", ""),
         ("step", "After restart:"),
         ("text", "E-ink will show a QR code"),
-        ("text", f"Open http://{lan_ip}:{port}/settings"),
+        ("text", f"Open {scheme}://{lan_ip}:{port}/settings"),
         ("text", "Login with Google, select calendars"),
     ]
 

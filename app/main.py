@@ -398,14 +398,18 @@ async def update_settings(upd: SettingsUpdate):
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
     settings_store.update(data)
     # Trigger render in background thread
-    threading.Thread(target=_safe_render, daemon=True).start()
+    t = threading.Thread(target=_safe_render, daemon=True)
+    t.start()
+    logger.info("Render thread started: %s", t.name)
     return {"ok": True}
 
 
 @app.post("/api/render")
 async def trigger_render():
     """Manually trigger a screen render in background."""
-    threading.Thread(target=_safe_render, daemon=True).start()
+    t = threading.Thread(target=_safe_render, daemon=True)
+    t.start()
+    logger.info("Render thread started: %s", t.name)
     return {"ok": True}
 
 

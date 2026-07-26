@@ -19,7 +19,8 @@ W = config.SCREEN_W
 H = config.SCREEN_H
 
 # Margins (pixels)
-MARGIN = 84  # extra space for hour labels on the left
+MARGIN = 84   # left margin for hour labels
+RIGHT_PAD = 16  # right edge padding (minimal)
 HEADER_H = 120
 FOOTER_H = 30
 
@@ -132,7 +133,7 @@ def _render_month(draw, events, now, max_full_day):
 
     grid_x = MARGIN
     grid_y = HEADER_H + 10
-    grid_w = W - 2 * MARGIN
+    grid_w = W - MARGIN - RIGHT_PAD
     grid_h = H - grid_y - FOOTER_H
     col_w = grid_w // 7
     row_h = grid_h // num_weeks
@@ -237,7 +238,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
     grid_x = MARGIN
     grid_y = HEADER_H + 50  # Leave room for full-day event strip
-    grid_w = W - 2 * MARGIN
+    grid_w = W - MARGIN - RIGHT_PAD
     grid_h = H - grid_y - FOOTER_H
 
     col_w = grid_w // days
@@ -302,7 +303,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                    outline=GRAY_LIGHT, width=1)
 
     # Hour lines + labels
-    hour_font = _font(22)
+    hour_font = _font(26)
     for h in range(ds_h, de_h + 1):
         y = grid_y + (h * 60 - ds_min) * minute_h
         if y > grid_y + grid_h:
@@ -316,7 +317,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             label = f"{h12} {ampm}"
         else:
             label = f"{h:02d}:00"
-        draw.text((grid_x - 52, y - 12), label, fill=GRAY_MID, font=hour_font)
+        draw.text((grid_x - 70, y - 14), label, fill=GRAY_MID, font=hour_font)
 
     # Column separators
     for i in range(1, days):
@@ -416,7 +417,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
     days = 7
     grid_x = MARGIN
     grid_y = HEADER_H + 50
-    grid_w = W - 2 * MARGIN
+    grid_w = W - MARGIN - RIGHT_PAD
     grid_h = H - grid_y - FOOTER_H
     col_w = grid_w // days
     span_min = de_min - ds_min

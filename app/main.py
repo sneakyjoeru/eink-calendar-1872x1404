@@ -483,6 +483,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 
 <button type="button" class="btn btn-primary" onclick="saveSettings()">💾 Save &amp; Render</button>
 <button type="button" class="btn btn-primary" style="background:#0f3460;margin-top:8px;" onclick="renderNow()">🔄 Render Now</button>
+<p id="saveStatus" style="font-size:0.85em;margin-top:8px;text-align:center"></p>
 
 <div class="footer">
   E-Ink Calendar · {lan_ip}:{port} · 1872×1404 IT8951
@@ -510,12 +511,22 @@ async function saveSettings() {{
     method: 'POST', headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify(data)
   }});
-  if (r.ok) alert('Settings saved! Screen updating...');
-  else alert('Error saving settings');
+  const status = document.getElementById('saveStatus');
+  if (r.ok) {{
+    status.textContent = '✓ Saved! Screen updating...';
+    setTimeout(() => location.reload(), 1500);
+  }} else {{
+    status.textContent = 'Error saving settings';
+  }}
 }}
 async function renderNow() {{
+  const status = document.getElementById('saveStatus');
+  status.textContent = 'Rendering...';
   const r = await fetch('/api/render', {{method: 'POST'}});
-  if (r.ok) alert('Rendering...');
+  if (r.ok) {{
+    status.textContent = '✓ Rendered!';
+    setTimeout(() => location.reload(), 1500);
+  }}
 }}
 async function startGoogleAuth() {{
   const status = document.getElementById('authStatus');

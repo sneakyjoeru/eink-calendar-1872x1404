@@ -413,9 +413,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         else:
             draw.text((cx - dw2 // 2, grid_y - 28), date_str, fill=color, font=date_font)
 
-    # Full-day events strip (above the time grid)
+    # Full-day events — build data index early
     fd_y = HEADER_H + 10
-    fd_h = 36
     fd_events_by_date: dict[datetime.date, list[dict]] = {}
     for ev in events:
         if ev["all_day"]:
@@ -424,25 +423,31 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 d = d.date()
             fd_events_by_date.setdefault(d, []).append(ev)
 
+    # Day headers
+    dow_font = _font(30, bold=True)
+    date_font = _font(24)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
-        fd_list = fd_events_by_date.get(d, [])
-        for j, ev in enumerate(fd_list[:max_full_day]):
-            ey = fd_y + j * 28
-            label = ev.get("summary", "")
-            if not label or label == "(No title)":
-                continue
-            label = label[:15]
-            fd_font = _font(20)
-            if _text_w(draw, label + "…", fd_font) > col_w - 8:
-                while len(label) > 2 and _text_w(draw, label + "…", fd_font) > col_w - 8:
-                    label = label[:-1]
-                label += "…"
-            # Draw a filled bar (light grey bg, 2px black border) with +2px top/bot
-            draw.rounded_rectangle([x + 4, ey - 2, x + col_w - 4, ey + 22], radius=6,
-                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
-            draw.text((x + 8, ey + 1), label, fill=BLACK, font=fd_font)
+        cx = x + col_w // 2
+
+        dow = d.strftime("%a")
+        dw = _text_w(draw, dow, dow_font)
+        draw.text((cx - dw // 2, grid_y - 56), dow, fill=GRAY_DARK, font=dow_font)
+
+        date_str = str(d.day)
+        dw2 = _text_w(draw, date_str, date_font)
+        color = BLACK
+        if d == today:
+            tw = _text_w(draw, date_str, date_font)
+            th = _text_h(draw, date_str, date_font)
+            pad = 3
+            tx = cx - dw2 // 2
+            ty = grid_y - 26
+            draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
+            draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
+        else:
+            draw.text((cx - dw2 // 2, grid_y - 28), date_str, fill=color, font=date_font)
 
     # Grid border
     draw.rectangle([grid_x, grid_y, grid_x + days * col_w - 1, grid_y + grid_h - 1],
@@ -469,6 +474,26 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
     for i in range(1, days):
         x = grid_x + i * col_w
         draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=GRAY_LIGHT, width=1)
+
+    # Full-day events — draw ON TOP of hour lines so bars aren't crossed
+    for i in range(days):
+        d = start_date + datetime.timedelta(days=i)
+        x = grid_x + i * col_w
+        fd_list = fd_events_by_date.get(d, [])
+        for j, ev in enumerate(fd_list[:max_full_day]):
+            ey = fd_y + j * 28
+            label = ev.get("summary", "")
+            if not label or label == "(No title)":
+                continue
+            label = label[:15]
+            fd_font = _font(20)
+            if _text_w(draw, label + "…", fd_font) > col_w - 8:
+                while len(label) > 2 and _text_w(draw, label + "…", fd_font) > col_w - 8:
+                    label = label[:-1]
+                label += "…"
+            draw.rounded_rectangle([x + 4, ey - 2, x + col_w - 4, ey + 22], radius=6,
+                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
+            draw.text((x + 8, ey - 1), label, fill=BLACK, font=fd_font)
 
     # Timed events
     timed_events_by_date: dict[datetime.date, list[dict]] = {}

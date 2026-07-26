@@ -408,6 +408,11 @@ async def settings_page(request: Request):
         day_end=s["day_end"],
         max_fd=s["max_full_day_events"],
         tl_interval=s["time_line_interval_min"],
+        sel_tl_5='selected' if s['time_line_interval_min']==5 else '',
+        sel_tl_10='selected' if s['time_line_interval_min']==10 else '',
+        sel_tl_15='selected' if s['time_line_interval_min']==15 else '',
+        sel_tl_30='selected' if s['time_line_interval_min']==30 else '',
+        sel_tl_60='selected' if s['time_line_interval_min']==60 else '',
         poll_interval=s["event_poll_interval_sec"],
         brightness=s.get("brightness", 1.4),
         timezone=tz,
@@ -804,8 +809,14 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     <label>Max Full-Day Events (per day): {max_fd}
       <input type="range" name="max_full_day_events" min="1" max="3" value="{max_fd}">
     </label>
-    <label>Update interval (minutes)
-      <input type="number" name="time_line_interval_min" value="{tl_interval}" min="1" max="60">
+    <label>Update interval
+      <select name="time_line_interval_min">
+        <option value="5" {sel_tl_5}>5 min</option>
+        <option value="10" {sel_tl_10}>10 min</option>
+        <option value="15" {sel_tl_15}>15 min</option>
+        <option value="30" {sel_tl_30}>30 min</option>
+        <option value="60" {sel_tl_60}>60 min</option>
+      </select>
     </label>
     <label>Event Poll Interval (seconds)
       <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">

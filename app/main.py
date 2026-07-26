@@ -392,25 +392,38 @@ class SettingsUpdate(BaseModel):
 
 
 @app.post("/api/settings")
-async def update_settings(upd: SettingsUpdate):
-    """Update settings and trigger render."""
-    data = upd.model_dump(exclude_none=True)
+async def update_settings(
+    view_mode: str = Form("week"),
+    day_start: str = Form("07:00"),
+    day_end: str = Form("23:00"),
+    max_full_day_events: int = Form(3),
+    time_line_interval_min: int = Form(15),
+    event_poll_interval_sec: int = Form(60),
+    brightness: float = Form(1.4),
+    timezone: str = Form(""),
+):
+    """Save settings from form POST, trigger render, redirect back."""
+    data = {
+        "view_mode": view_mode,
+        "day_start": day_start,
+        "day_end": day_end,
+        "max_full_day_events": max_full_day_events,
+        "time_line_interval_min": time_line_interval_min,
+        "event_poll_interval_sec": event_poll_interval_sec,
+        "brightness": brightness,
+        "timezone": timezone,
+    }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
     settings_store.update(data)
-    # Trigger render in background thread
-    t = threading.Thread(target=_safe_render, daemon=True)
-    t.start()
-    logger.info("Render thread started: %s", t.name)
-    return {"ok": True}
+    threading.Thread(target=_safe_render, daemon=True).start()
+    return RedirectResponse(url="/settings", status_code=303)
 
 
-@app.post("/api/render")
+@app.get("/api/render")
 async def trigger_render():
-    """Manually trigger a screen render in background."""
-    t = threading.Thread(target=_safe_render, daemon=True)
-    t.start()
-    logger.info("Render thread started: %s", t.name)
-    return {"ok": True}
+    """Trigger render via GET link, redirect back."""
+    threading.Thread(target=_safe_render, daemon=True).start()
+    return RedirectResponse(url="/settings", status_code=303)
 
 
 def _safe_render():
@@ -562,7 +575,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 
 <div class="card">
   <h2>View Settings</h2>
-  <form id="settingsForm">
+  <form id="settingsForm" action="/api/settings" method="POST">
     <label>View Mode
       <select name="view_mode">
         <option value="month" {sel_month}>Month</option>
@@ -600,52 +613,15 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
   <p style="font-size:0.75em;color:#666;margin-top:8px;">Empty selection = all calendars</p>
 </div>
 
-<button type="button" class="btn btn-primary" onclick="saveSettings()">💾 Save &amp; Render</button>
-<button type="button" class="btn btn-primary" style="background:#0f3460;margin-top:8px;" onclick="renderNow()">🔄 Render Now</button>
-<p id="saveStatus" style="font-size:0.85em;margin-top:8px;text-align:center"></p>
+<button type="submit" class="btn btn-primary">💾 Save &amp; Render</button>
+<a href="/api/render" class="btn btn-primary" style="background:#0f3460;margin-top:8px;display:block;text-align:center">🔄 Render Now</a>
+<p id="saveStatus"></p>
 
 <div class="footer">
   E-Ink Calendar · {lan_ip}:{port} · 1872×1404 IT8951
 </div>
 
 <script>
-async function saveSettings() {{
-  const form = document.getElementById('settingsForm');
-  const fd = new FormData(form);
-  // Collect checked calendars
-  const cals = document.querySelectorAll('input[name="selected_calendars"]:checked');
-  const calIds = Array.from(cals).map(c => c.value);
-
-  const data = {{
-    view_mode: fd.get('view_mode'),
-    day_start: fd.get('day_start'),
-    day_end: fd.get('day_end'),
-    max_full_day_events: parseInt(fd.get('max_full_day_events')),
-    time_line_interval_min: parseInt(fd.get('time_line_interval_min')),
-    event_poll_interval_sec: parseInt(fd.get('event_poll_interval_sec')),
-    brightness: parseFloat(fd.get('brightness')),
-    timezone: fd.get('timezone') || '',
-    selected_calendars: calIds,
-  }};
-  const r = await fetch('/api/settings', {{
-    method: 'POST', headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify(data)
-  }});
-  const status = document.getElementById('saveStatus');
-  if (r.ok) {{
-    status.textContent = '✓ Saved! Render triggered. Screen updating...';
-  }} else {{
-    status.textContent = 'Error saving settings';
-  }}
-}}
-async function renderNow() {{
-  const status = document.getElementById('saveStatus');
-  status.textContent = 'Triggering render...';
-  const r = await fetch('/api/render', {{method: 'POST'}});
-  if (r.ok) {{
-    status.textContent = '✓ Render triggered! Screen should update shortly.';
-  }}
-}}
 async function startGoogleAuth() {{
   const status = document.getElementById('authStatus');
   status.textContent = 'Getting authorization link...';

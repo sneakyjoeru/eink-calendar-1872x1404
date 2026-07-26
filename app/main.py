@@ -241,16 +241,22 @@ def background_loop():
                 time.sleep(300)
                 continue
 
-            # Event poll
+            # Event poll (checks for event changes in all views)
             poll_interval = s.get("event_poll_interval_sec", 60)
             do_render()
 
-            # Time-line update (every 15 min by default)
-            tl_interval = s.get("time_line_interval_min", 15) * 60
-            now_ts = time.time()
-            if now_ts - _last_time_line_render >= tl_interval:
-                do_render(force=True)
-                _last_time_line_render = now_ts
+            # Time-line update — only for week/7days views, aligned to interval boundary
+            view_mode = s.get("view_mode", "week")
+            if view_mode in ("week", "7days"):
+                tl_interval_min = s.get("time_line_interval_min", 15)
+                tl_interval = tl_interval_min * 60
+                now_dt = datetime.datetime.now()
+                # Align to interval from the hour start
+                if now_dt.minute % tl_interval_min == 0 and now_dt.second < poll_interval:
+                    now_ts = time.time()
+                    if now_ts - _last_time_line_render >= tl_interval:
+                        do_render(force=True)
+                        _last_time_line_render = now_ts
 
             time.sleep(poll_interval)
         except Exception as e:

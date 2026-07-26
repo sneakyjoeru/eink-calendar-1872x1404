@@ -213,7 +213,10 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
             # Day number
             in_month = day_num.month == today.month
             is_today = day_num == today
-            color = BLACK if in_month else GRAY_MID
+            if dim_past_events and day_num < today:
+                color = GRAY_DIM
+            else:
+                color = BLACK if in_month else GRAY_MID
             day_str = str(day_num.day)
             if is_today:
                 # Highlight today — full cell width, compact height around text
@@ -348,6 +351,7 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
 
             # Day number
             is_today = day_num == today
+            color = GRAY_DIM if (dim_past_events and day_num < today and not is_today) else BLACK
             day_str = str(day_num.day)
             if is_today:
                 # Highlight today — full cell width, compact height
@@ -378,7 +382,7 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
                     for dy in range(dot_step, row_h - 2, dot_step):
                         draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
             else:
-                draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)
+                draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
 
             # Events for this day (wrap by syllables, fill cell as space permits)
             day_events = events_by_date.get(day_num, [])

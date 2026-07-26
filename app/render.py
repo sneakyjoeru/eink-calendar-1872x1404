@@ -511,7 +511,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     else:
                         # Smaller → right side, shrunk from left
                         xl = x + 6 + SHRINK * 2
-                        xr = x + col_w - 6
+                        xr = x + col_w - 4
                 else:  # overlap_next only
                     next_dur = ev_infos[idx + 1][4]
                     if duration >= next_dur:
@@ -519,7 +519,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         xr = x + col_w - 6 - SHRINK
                     else:
                         xl = x + 6 + SHRINK * 2
-                        xr = x + col_w - 6
+                        xr = x + col_w - 4
             else:
                 xl = x + 6
                 xr = x + col_w - 6

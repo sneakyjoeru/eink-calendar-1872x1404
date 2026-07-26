@@ -805,6 +805,10 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
       <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim} style="width:auto">
       <span>Dim events when time line crosses them</span>
     </label>
+    <label style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="dim_past_events" value="1" {dim_past} style="width:auto">
+      <span>Dim past events</span>
+    </label>
     <label>Timezone
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP" style="font-size:0.85em">
       <span style="font-size:0.75em;color:#666">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3)</span>

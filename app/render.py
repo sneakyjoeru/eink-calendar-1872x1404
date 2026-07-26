@@ -54,14 +54,13 @@ def _text_h(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     return bbox[3] - bbox[1]
 
 
-# ---- Color helpers (grayscale for e-ink: (0,0,0)=black, (255,255,255)=white) ----
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-GRAY_DARK = (60, 60, 60)
-GRAY_MID = (120, 120, 120)
-GRAY_LIGHT = (200, 200, 200)
-GRAY_VLIGHT = (239, 239, 239)
-GRAY_HOUR_LINE = (170, 170, 170)
+# ---- Color helpers (grayscale for e-ink: 0=black, 255=white) ----
+WHITE = 255
+BLACK = 0
+GRAY_DARK = 60
+GRAY_MID = 120
+GRAY_LIGHT = 200
+GRAY_VLIGHT = 254
 
 
 def render_calendar(view_mode: str, events: list[dict],
@@ -318,7 +317,7 @@ def _render_35days(draw, events, now, max_full_day):
                 rx = x + 10 - pad
                 ry = y + 6 - pad
                 draw.rectangle([rx, ry, rx + tw + pad * 2, ry + th + pad * 2], fill=BLACK)
-                draw.text((x + 10, y + 6), day_str, fill=WHITE, font=cell_font)
+                draw.text((x + 10, y + 6), day_str, fill=(255, 255, 255), font=cell_font)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)
 
@@ -405,7 +404,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             tx = cx - dw2 // 2
             ty = grid_y - 20
             draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
-            draw.text((tx, ty), date_str, fill=WHITE, font=date_font)
+            draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
         else:
             draw.text((cx - dw2 // 2, grid_y - 22), date_str, fill=color, font=date_font)
 
@@ -445,7 +444,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         y = grid_y + (h * 60 - ds_min) * minute_h
         if y > grid_y + grid_h:
             break
-        draw.line([(grid_x, y), (grid_x + days * col_w, y)], fill=GRAY_HOUR_LINE, width=1)
+        draw.line([(grid_x, y), (grid_x + days * col_w, y)], fill=GRAY_VLIGHT, width=1)
         if time_format == "12h":
             ampm = "AM" if h < 12 else "PM"
             h12 = h % 12
@@ -473,7 +472,6 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
     event_font = _font(20)
     event_font_sm = _font(16)
-    SHRINK_PX = 6  # ~1mm at 150 DPI
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
@@ -481,8 +479,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         if not day_events:
             continue
 
-        # Pre-compute positions for all events in this day column
-        positions = []  # (ev, ey_top, ey_bot, eh, duration_min)
+        # Pre-compute positions for overlap detection
+        ev_infos = []
         for ev in day_events:
             ev_start_min = _ev_minutes(ev, now, start=True)
             ev_end_min = _ev_minutes(ev, now, start=False)
@@ -493,43 +491,30 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             ey_top = grid_y + (ev_start_min - ds_min) * minute_h
             ey_bot = grid_y + (ev_end_min - ds_min) * minute_h
             eh = max(ey_bot - ey_top, 18)
-            positions.append((ev, ey_top, ey_bot, eh, ev_end_min - ev_start_min))
+            ev_infos.append((ev, ey_top, ey_bot, eh))
 
-        # Draw each event, splitting horizontally when overlapping
-        for idx, (ev, ey_top, ey_bot, eh, duration) in enumerate(positions):
-            # Detect vertical overlap with neighbours
-            overlap_prev = idx > 0 and positions[idx - 1][2] > ey_top
-            overlap_next = idx + 1 < len(positions) and ey_bot > positions[idx + 1][1]
+        # Draw events, shifting overlapping ones right by 1mm (6px)
+        for idx, (ev, ey_top, ey_bot, eh) in enumerate(ev_infos):
+            # Check if this event overlaps with any other in this column
+            overlaps = False
+            for j, (_, j_top, j_bot, _) in enumerate(ev_infos):
+                if j == idx:
+                    continue
+                if ey_top < j_bot and ey_bot > j_top:
+                    overlaps = True
+                    break
 
-            if overlap_prev or overlap_next:
-                if overlap_prev:
-                    prev_dur = positions[idx - 1][4]
-                    if duration >= prev_dur:
-                        # Larger/equal → left side, shrunk from right
-                        xl = x + 6
-                        xr = x + col_w - 6 - SHRINK_PX
-                    else:
-                        # Smaller → right side, shrunk from left
-                        xl = x + 6 + SHRINK_PX
-                        xr = x + col_w - 6
-                else:  # overlap_next only
-                    next_dur = positions[idx + 1][4]
-                    if duration >= next_dur:
-                        xl = x + 6
-                        xr = x + col_w - 6 - SHRINK_PX
-                    else:
-                        xl = x + 6 + SHRINK_PX
-                        xr = x + col_w - 6
+            if overlaps:
+                xl = x + 6 + 6  # +6 original padding + 6 for 1mm shift
             else:
                 xl = x + 6
-                xr = x + col_w - 6
+            xr = x + col_w - 6
 
-            # Draw event box with adjusted horizontal position
+            # Draw event box
             draw.rectangle([xl, ey_top, xr, ey_top + eh - 1],
                            fill=GRAY_VLIGHT, outline=BLACK, width=2)
             # Title text
             label = ev["summary"][:20]
-            avail_w = xr - xl - 8
             if eh > 24:
                 draw.text((xl + 4, ey_top + 4), label, fill=BLACK, font=event_font)
                 time_str = _ev_time_str(ev, now)

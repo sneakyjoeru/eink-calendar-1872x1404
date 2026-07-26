@@ -12,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Request, UploadFile, Form
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -218,7 +218,14 @@ async def settings_page():
 
     auth_section = ""
     if not configured:
-        auth_section = '<div class="alert">⚠️ Google OAuth not configured. Place <code>client_secret.json</code> in <code>config/</code> and restart.</div>'
+        auth_section = '''
+        <div class="alert">⚠️ Place your <code>client_secret.json</code> below:</div>
+        <div style="display:flex;gap:8px">
+          <input type="file" id="secretFile" accept=".json" style="flex:1;padding:6px;background:#0f3460;color:#eee;border-radius:6px;border:1px solid #333;font-size:0.85em">
+          <button class="btn btn-small" onclick="uploadSecret()" style="white-space:nowrap">Upload</button>
+        </div>
+        <p id="uploadStatus" style="font-size:0.8em;margin-top:6px"></p>
+        '''
     elif not authenticated:
         auth_section = '''
         <p style="margin-bottom:10px">Click below to get the authorization link, then paste the code back.</p>
@@ -296,6 +303,22 @@ async def status():
         "port": config.APP_PORT,
         "settings": settings_store.load(),
     }
+
+
+@app.post("/api/upload-secret")
+async def upload_secret(file: UploadFile = File(...)):
+    """Upload client_secret.json for Google OAuth."""
+    if not file.filename.endswith(".json"):
+        return JSONResponse({"error": "File must be a .json"}, status_code=400)
+    try:
+        content = await file.read()
+        dest = config.BASE_DIR / "config" / "client_secret.json"
+        dest.write_bytes(content)
+        logger.info("client_secret.json uploaded (%d bytes)", len(content))
+        return {"ok": True}
+    except Exception as e:
+        logger.error("Upload failed: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ---- Google OAuth routes ----
@@ -508,6 +531,27 @@ async function exchangeCode() {{
     }} else {{
       const err = await r.json();
       status.textContent = 'Error: ' + (err.error || 'Exchange failed');
+    }}
+  }} catch(e) {{
+    status.textContent = 'Error: ' + e.message;
+  }}
+}}
+async function uploadSecret() {{
+  const fileInput = document.getElementById('secretFile');
+  const file = fileInput.files[0];
+  if (!file) {{ alert('Select client_secret.json first'); return; }}
+  const status = document.getElementById('uploadStatus');
+  status.textContent = 'Uploading...';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {{
+    const r = await fetch('/api/upload-secret', {{method:'POST', body:fd}});
+    const data = await r.json();
+    if (data.ok) {{
+      status.textContent = '✓ Uploaded! Refreshing...';
+      setTimeout(() => location.reload(), 1000);
+    }} else {{
+      status.textContent = 'Error: ' + (data.error || 'Upload failed');
     }}
   }} catch(e) {{
     status.textContent = 'Error: ' + e.message;

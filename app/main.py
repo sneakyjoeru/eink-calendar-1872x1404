@@ -78,16 +78,53 @@ def _auto_detect_timezone_async():
 
 
 def _now() -> datetime.datetime:
-    """Get current datetime in the configured timezone."""
+    """Get current datetime in the configured timezone.
+
+    Accepts IANA names (Europe/Moscow) or UTC offsets (+3, +1.5, -4).
+    """
     s = settings_store.load()
-    tz_name = s.get("timezone", "")
+    tz_name = s.get("timezone", "").strip()
     if tz_name:
-        try:
-            tz = ZoneInfo(tz_name)
+        tz = _parse_timezone(tz_name)
+        if tz:
             return datetime.datetime.now(tz)
-        except Exception:
-            pass
     return datetime.datetime.now()
+
+
+def _parse_timezone(val: str) -> Optional[datetime.tzinfo]:
+    """Parse a timezone string: IANA name or UTC offset like +3, +1.5, -4.
+
+    Returns a tzinfo object or None if parsing fails.
+    """
+    val = val.strip()
+    if not val:
+        return None
+    # Try IANA name first (e.g. Europe/Moscow)
+    try:
+        return ZoneInfo(val)
+    except (KeyError, ValueError):
+        pass
+    # Try UTC offset (e.g. +3, +1.5, -4, +05:30)
+    try:
+        mul = 1
+        s = val
+        if s.startswith("+"):
+            s = s[1:]
+        elif s.startswith("-"):
+            mul = -1
+            s = s[1:]
+        else:
+            return None
+        if ":" in s:
+            parts = s.split(":")
+            hours = float(parts[0]) + float(parts[1]) / 60.0
+        else:
+            hours = float(s)
+        minutes = int(hours * 60 * mul)
+        return datetime.timezone(datetime.timedelta(minutes=minutes))
+    except (ValueError, IndexError):
+        pass
+    return None
 
 
 def _events_hash(events: list[dict]) -> str:
@@ -346,17 +383,15 @@ class SettingsUpdate(BaseModel):
 
 @app.post("/api/settings")
 async def update_settings(upd: SettingsUpdate):
-    """Update settings and trigger a re-render."""
+    """Update settings. The background loop will pick up changes on next poll."""
     data = upd.model_dump(exclude_none=True)
     settings_store.update(data)
-    # Trigger immediate re-render
-    threading.Thread(target=lambda: do_render(force=True), daemon=True).start()
     return {"ok": True}
 
 
 @app.post("/api/render")
 async def trigger_render():
-    """Manually trigger a screen render."""
+    """Manually trigger a screen render in background."""
     threading.Thread(target=lambda: do_render(force=True), daemon=True).start()
     return {"ok": True}
 
@@ -520,7 +555,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     </label>
     <label>Timezone
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP" style="font-size:0.85em">
-      <span style="font-size:0.75em;color:#666">IANA name (e.g. Europe/Moscow). Empty = system default</span>
+      <span style="font-size:0.75em;color:#666">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3, +1.5, -4)</span>
     </label>
   </form>
 </div>
@@ -565,19 +600,17 @@ async function saveSettings() {{
   }});
   const status = document.getElementById('saveStatus');
   if (r.ok) {{
-    status.textContent = '✓ Saved! Screen updating...';
-    setTimeout(() => location.reload(), 1500);
+    status.textContent = '✓ Saved! The e-ink will update on the next poll cycle.';
   }} else {{
     status.textContent = 'Error saving settings';
   }}
 }}
 async function renderNow() {{
   const status = document.getElementById('saveStatus');
-  status.textContent = 'Rendering...';
+  status.textContent = 'Triggering render...';
   const r = await fetch('/api/render', {{method: 'POST'}});
   if (r.ok) {{
-    status.textContent = '✓ Rendered!';
-    setTimeout(() => location.reload(), 1500);
+    status.textContent = '✓ Render triggered! Screen should update shortly.';
   }}
 }}
 async function startGoogleAuth() {{

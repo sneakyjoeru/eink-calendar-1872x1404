@@ -583,11 +583,11 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         for info in sorted(draw_infos, key=lambda e: -e[4]):
             ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min = info
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
-            is_past = dim_past_events and e_min <= now_min_total
+            is_past = dim_past_events and d < today
             if is_crossed:
                 box_fill, box_outline = WHITE, GRAY_DIM
             elif is_past:
-                box_fill, box_outline = GRAY_LIGHT, GRAY_MID
+                box_fill, box_outline = WHITE, GRAY_LIGHT
             else:
                 box_fill, box_outline = GRAY_VLIGHT, BLACK
             draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
@@ -621,8 +621,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     overlap_ranges.append((o_top, o_bot))
 
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
-            is_past = dim_past_events and e_min <= now_min_total
-            text_fill = GRAY_DIM if (is_crossed or is_past) else BLACK
+            is_past = dim_past_events and d < today
+            text_fill = GRAY_MID if (is_crossed or is_past) else BLACK
 
             y = ey_top + 4
             for text, is_time in render_lines:

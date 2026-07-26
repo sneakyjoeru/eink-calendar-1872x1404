@@ -482,10 +482,10 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             eh = max(ey_bot - ey_top, 18)
             ev_infos.append((ev, ey_top, ey_bot, eh, ev_end_min - ev_start_min))
 
-        # Draw events, splitting overlapping pairs horizontally
+        # Calculate horizontal splits for all events
         SHRINK = 6  # ~1mm at 150 DPI
+        draw_infos = []  # (ev, ey_top, ey_bot, eh, duration, xl, xr)
         for idx, (ev, ey_top, ey_bot, eh, duration) in enumerate(ev_infos):
-            # Check overlap with neighbours
             overlap_prev = idx > 0 and ev_infos[idx - 1][2] > ey_top
             overlap_next = idx + 1 < len(ev_infos) and ey_bot > ev_infos[idx + 1][1]
 
@@ -493,52 +493,54 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 if overlap_prev:
                     prev_dur = ev_infos[idx - 1][4]
                     if duration >= prev_dur:
-                        # Larger/equal → left side, shrunk from right
-                        xl = x + 6
-                        xr = x + col_w - 6 - SHRINK
+                        xl, xr = x + 6, x + col_w - 6 - SHRINK
                     else:
-                        # Smaller → right side, shrunk from left
-                        xl = x + 6 + SHRINK * 3
-                        xr = x + col_w - 4
-                else:  # overlap_next only
+                        xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
+                else:
                     next_dur = ev_infos[idx + 1][4]
                     if duration >= next_dur:
-                        xl = x + 6
-                        xr = x + col_w - 6 - SHRINK
+                        xl, xr = x + 6, x + col_w - 6 - SHRINK
                     else:
-                        xl = x + 6 + SHRINK * 3
-                        xr = x + col_w - 4
+                        xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
             else:
-                xl = x + 4
-                xr = x + col_w - 4
+                xl, xr = x + 4, x + col_w - 4
+            draw_infos.append((ev, ey_top, ey_bot, eh, duration, xl, xr))
 
+        # Draw boxes: longest first so shorter events render ON TOP
+        for info in sorted(draw_infos, key=lambda e: -e[4]):
+            ev, ey_top, ey_bot, eh, duration, xl, xr = info
             draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
                                    fill=GRAY_VLIGHT, outline=BLACK, width=2)
 
-            # Text inside event box
+        # Draw text: for larger events, text starts below any overlapping smaller event
+        line_h = 26
+        for ev, ey_top, ey_bot, eh, duration, xl, xr in draw_infos:
+            # Determine text start Y — pushed below overlapping shorter events
+            text_y = ey_top + 4
+            for o_ev, o_top, o_bot, o_eh, o_dur, o_xl, o_xr in draw_infos:
+                if o_dur < duration and o_top < ey_bot and o_bot > ey_top:
+                    text_y = max(text_y, o_bot + 4)
+            if text_y >= ey_bot - line_h:
+                continue  # No room for text
+
             summary = ev.get("summary", "")
             time_str = _ev_time_str(ev, now)
             avail_w = xr - xl - 8
-            line_h = 26
             txt_x = xl + 10
 
             if summary and summary != "(No title)":
-                # Wrap title text to fit box width
                 title_lines = _wrap_text_lines(draw, summary, event_font, avail_w)
-                y = ey_top + 4
-                # Draw as many title lines as fit
+                y = text_y
                 for line in title_lines:
-                    if y + line_h > ey_top + eh - 8:
+                    if y + line_h > ey_bot - 8:
                         break
                     draw.text((txt_x, y), line, fill=BLACK, font=event_font)
                     y += line_h
-                # Time right below title with spacing — use event_font for consistency
-                if time_str and y + line_h <= ey_top + eh:
+                if time_str and y + line_h <= ey_bot:
                     y += 4
                     draw.text((txt_x, y), time_str, fill=BLACK, font=event_font)
             elif time_str:
-                # No title, just time
-                draw.text((txt_x, ey_top + 4), time_str, fill=BLACK, font=event_font)
+                draw.text((txt_x, text_y), time_str, fill=BLACK, font=event_font)
 
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)
     for i in range(days):

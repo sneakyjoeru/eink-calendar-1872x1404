@@ -510,21 +510,21 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
     draw = ImageDraw.Draw(img)
 
     x = MARGIN
-    y = 60
+    y = 50
 
     # Title
-    title_font = _font(112, bold=True)
+    title_font = _font(74, bold=True)
     draw.text((x, y), "Setup Required", fill=BLACK, font=title_font)
-    y += 160
+    y += 110
 
     # Separator
     draw.line([(x, y), (W - MARGIN, y)], fill=GRAY_MID, width=2)
-    y += 60
+    y += 40
 
-    step_font = _font(128, bold=True)
-    text_font = _font(104)
-    code_font = _font(96)
-    indent = x + 40
+    step_font = _font(84, bold=True)
+    text_font = _font(69)
+    code_font = _font(64)
+    indent = x + 30
 
     steps = [
         ("step", "1. Create Google OAuth Credentials"),
@@ -550,18 +550,18 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
 
     for kind, line in steps:
         if kind == "blank":
-            y += 28
+            y += 20
         elif kind == "step":
             draw.text((x, y), line, fill=BLACK, font=step_font)
-            y += 76
+            y += 52
         elif kind == "text":
             draw.text((indent, y), line, fill=GRAY_DARK, font=text_font)
-            y += 64
+            y += 44
         elif kind == "code":
             # Draw code with a border-only outline (no fill), +1px expansion
             tw = _text_w(draw, line, code_font)
             box_w = min(tw + 32, W - MARGIN - indent + 8)
-            draw.rectangle([indent - 8, y - 4, indent - 8 + box_w + 2, y + 60 + 2],
+            draw.rectangle([indent - 8, y - 4, indent - 8 + box_w + 2, y + 44 + 2],
                            outline=GRAY_MID, width=2)
             # Truncate if too long
             display = line
@@ -570,6 +570,6 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
             if display != line:
                 display = display[:-1] + "…"
             draw.text((indent, y + 4), display, fill=BLACK, font=code_font)
-            y += 72
+            y += 50
 
     return img

@@ -525,34 +525,34 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
     dow_font = _font(30, bold=True)
-    date_font = _font(28, bold=True)
+    date_font = _font(40, bold=True)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
         cx = x + col_w // 2
 
         dow = d.strftime("%a")
-        dw = _text_w(draw, dow, dow_font)
-        dow_x = cx - dw // 2
-        dow_y = grid_y - 58
-
         date_str = str(d.day)
+
+        dw = _text_w(draw, dow, dow_font)
         dw2 = _text_w(draw, date_str, date_font)
-        date_x = cx - dw2 // 2
-        date_y = grid_y - 30
+        gap = 6
+        combined_w = dw + gap + dw2
+        line_x = cx - combined_w // 2
+        line_y = grid_y - 46
 
         if d == today:
             bb_dow = draw.textbbox((0, 0), dow, font=dow_font)
             bb_date = draw.textbbox((0, 0), date_str, font=date_font)
             pad = 4
-            rect_top = dow_y + bb_dow[1] - pad
-            rect_bot = date_y + bb_date[3] + pad
+            rect_top = line_y + min(bb_dow[1], bb_date[1]) - pad
+            rect_bot = line_y + max(bb_dow[3], bb_date[3]) + pad
             draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
-            draw.text((dow_x, dow_y), dow, fill=WHITE, font=dow_font)
-            draw.text((date_x, date_y), date_str, fill=WHITE, font=date_font)
+            draw.text((line_x, line_y), dow, fill=WHITE, font=dow_font)
+            draw.text((line_x + dw + gap, line_y), date_str, fill=WHITE, font=date_font)
         else:
-            draw.text((dow_x, dow_y), dow, fill=GRAY_DARK, font=dow_font)
-            draw.text((date_x, date_y), date_str, fill=BLACK, font=date_font)
+            draw.text((line_x, line_y), dow, fill=GRAY_DARK, font=dow_font)
+            draw.text((line_x + dw + gap, line_y), date_str, fill=BLACK, font=date_font)
 
     # Timed events
     timed_events_by_date: dict[datetime.date, list[dict]] = {}

@@ -198,6 +198,8 @@ def _render_month(draw, events, now, max_full_day):
             ey = y + 48
             shown = 0
             for ev in day_events[:3]:
+                if ev.get("summary", "") in ("", "(No title)"):
+                    continue
                 label = ev["summary"][:18]
                 # Truncate with ellipsis if too long
                 if _text_w(draw, label, event_font) > col_w - 16:
@@ -326,6 +328,8 @@ def _render_35days(draw, events, now, max_full_day):
             day_events = events_by_date.get(day_num, [])
             ey = y + 48
             for ev in day_events[:3]:
+                if ev.get("summary", "") in ("", "(No title)"):
+                    continue
                 label = ev["summary"][:18]
                 if _text_w(draw, label, event_font) > col_w - 16:
                     while len(label) > 3 and _text_w(draw, label + "…", event_font) > col_w - 16:
@@ -426,7 +430,10 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         fd_list = fd_events_by_date.get(d, [])
         for j, ev in enumerate(fd_list[:max_full_day]):
             ey = fd_y + j * 28
-            label = ev["summary"][:15]
+            label = ev.get("summary", "")
+            if not label or label == "(No title)":
+                continue
+            label = label[:15]
             fd_font = _font(20)
             if _text_w(draw, label + "…", fd_font) > col_w - 8:
                 while len(label) > 2 and _text_w(draw, label + "…", fd_font) > col_w - 8:
@@ -473,7 +480,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             d = d.date()
         timed_events_by_date.setdefault(d, []).append(ev)
 
-    event_font = _font(22)
+    event_font = _font(24)
     event_font_sm = _font(18)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
@@ -528,13 +535,62 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
             draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
                                    fill=GRAY_VLIGHT, outline=BLACK, width=2)
-            label = ev["summary"][:25]
-            if eh > 24:
-                draw.text((xl + 4, ey_top + 4), label, fill=BLACK, font=event_font)
-                time_str = _ev_time_str(ev, now)
-                draw.text((xl + 4, ey_top + eh - 20), time_str, fill=BLACK, font=event_font_sm)
+
+            # Text inside event box
+            summary = ev.get("summary", "")
+            time_str = _ev_time_str(ev, now)
+            avail_w = xr - xl - 8
+            line_h = 26
+
+            if summary and summary != "(No title)":
+                # Wrap title text to fit box width
+                title_lines = _wrap_text_lines(draw, summary, event_font, avail_w)
+                y = ey_top + 4
+                # Draw as many title lines as fit
+                for line in title_lines:
+                    if y + line_h > ey_top + eh - 8:
+                        break
+                    draw.text((xl + 4, y), line, fill=BLACK, font=event_font)
+                    y += line_h
+                # Time right below title with spacing
+                if time_str and y + line_h <= ey_top + eh:
+                    y += 4
+                    draw.text((xl + 4, y), time_str, fill=BLACK, font=event_font_sm)
+            elif time_str:
+                # No title, just time
+                draw.text((xl + 4, ey_top + 4), time_str, fill=BLACK, font=event_font)
+
+
+def _wrap_text_lines(draw, text, font, max_w):
+    """Wrap text to fit max_w pixels, hyphenating long words.
+
+    Returns a list of lines.
+    """
+    words = text.split()
+    lines = []
+    current = ""
+    for word in words:
+        test = current + (" " if current else "") + word
+        if _text_w(draw, test, font) <= max_w:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            # Check if word itself overflows — hyphenate
+            if _text_w(draw, word, font) > max_w:
+                while word:
+                    for i in range(len(word), 0, -1):
+                        frag = word[:i] + ("-" if i < len(word) else "")
+                        if _text_w(draw, frag, font) <= max_w or i == 1:
+                            lines.append(frag)
+                            word = word[i:]
+                            break
+                current = ""
             else:
-                draw.text((xl + 4, ey_top + 2), label[:15], fill=BLACK, font=event_font_sm)
+                current = word
+    if current:
+        lines.append(current)
+    return lines
 
 
 def _ev_minutes(ev: dict, now: datetime.datetime, start: bool = True) -> int:

@@ -233,9 +233,9 @@ async def settings_page():
         <div id="authFlow" style="display:none;margin-top:12px">
           <p>1. Open this link in your browser:</p>
           <p><a id="authUrl" href="#" target="_blank" style="word-break:break-all;color:#4285F4"></a></p>
-          <p style="margin-top:10px">2. Authorize, then <b>copy the full URL</b> from the address bar when the redirect fails.</p>
-          <p>3. Paste the code below:</p>
-          <input id="authCode" type="text" style="width:100%;padding:8px;margin-bottom:8px" placeholder="Paste authorization code here">
+          <p style="margin-top:10px">2. Authorize. When the redirect fails, <b>copy the full URL</b> from the address bar and paste it below.</p>
+          <p>3. Paste the redirect URL or just the code:</p>
+          <input id="authCode" type="text" style="width:100%;padding:8px;margin-bottom:8px" placeholder="Paste the full redirect URL or just the code">
           <button class="btn btn-primary" onclick="exchangeCode()">✓ Exchange Code</button>
           <p id="authStatus" style="margin-top:8px;font-size:0.85em"></p>
         </div>
@@ -515,8 +515,11 @@ async function startGoogleAuth() {{
   }}
 }}
 async function exchangeCode() {{
-  const code = document.getElementById('authCode').value.trim();
-  if (!code) {{ alert('Paste the authorization code first'); return; }}
+  let raw = document.getElementById('authCode').value.trim();
+  if (!raw) {{ alert('Paste the redirect URL or code first'); return; }}
+  // Extract code= param from URL if full URL was pasted
+  const match = raw.match(/[?&]code=([^&]+)/);
+  const code = match ? decodeURIComponent(match[1]) : raw;
   const status = document.getElementById('authStatus');
   status.textContent = 'Exchanging code...';
   try {{

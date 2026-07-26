@@ -478,7 +478,6 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
     minute_h = grid_h / span_min  # pixels per minute
 
     # Full-day events — build data index early
-    fd_y = HEADER_H + 10
     fd_events_by_date: dict[datetime.date, list[dict]] = {}
     for ev in events:
         if ev["all_day"]:
@@ -666,31 +665,24 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
     fd_font = _font(24)
     fd_h = 26  # bar height
     fd_step = 30  # vertical spacing
+    fd_top = HEADER_H - 8  # top event's ey so its top edge touches the header separator line
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
         fd_list = fd_events_by_date.get(d, [])
-        fd_count = len(fd_list)
         for j, ev in enumerate(fd_list[:max_full_day]):
             label = ev.get("summary", "")
             if not label or label == "(No title)":
                 continue
 
-            # Vertical position: first 2 events downward, 3rd+ overshoot above
+            # Vertical: first 2 below header line, 3rd+ overshoot above
             if j < 2:
-                ey = fd_y + j * fd_step
+                ey = fd_top + j * fd_step
             else:
-                ey = fd_y - (j - 1) * fd_step
+                ey = fd_top - (j - 1) * fd_step
 
-            # Width: 1 event fills cell, 2 events share side by side
-            half = col_w // 2
-            if fd_count == 1 or (fd_count >= 3 and j >= 2):
-                xl, xr = x + 4, x + col_w - 4
-            elif j == 0:
-                xl, xr = x + 4, x + half - 2
-            else:
-                xl, xr = x + half + 2, x + col_w - 4
-
+            # Full cell width (stack vertically, not side-by-side)
+            xl, xr = x + 4, x + col_w - 4
             avail_fd_w = xr - xl - 8
             wrapped = _wrap_text_lines(draw, label, fd_font, avail_fd_w)
             display = wrapped[0] if wrapped else label[:15]

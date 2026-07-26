@@ -509,29 +509,31 @@ def render_status(message: str, submessage: str = "") -> Image.Image:
 def render_setup_required(lan_ip: str, port: int) -> Image.Image:
     """Render the 'Setup Required' screen with Google OAuth instructions.
 
-    Shows step-by-step instructions for creating Google OAuth credentials
-    and uploading client_secret.json to the Pi.
+    Uses 3× supersampling + LANCZOS downscale for smooth antialiased text,
+    matching the C IT8951 driver's text rendering technique.
     """
-    img = Image.new("RGB", (W, H), (255, 255, 255))
-    draw = ImageDraw.Draw(img)
+    scale = 3
+    sw, sh = W * scale, H * scale
 
-    x = MARGIN
-    y = 36
+    canvas = Image.new("RGB", (sw, sh), (255, 255, 255))
+    draw = ImageDraw.Draw(canvas)
+
+    x = MARGIN * scale
+    y = 36 * scale
 
     # Title
-    title_font = _font(64, bold=True)
-    draw.text((x, y), "Setup Required", fill=BLACK, font=title_font,
-              stroke_width=2, stroke_fill=BLACK)
-    y += 80
+    title_font = _font(64 * scale, bold=True)
+    draw.text((x, y), "Setup Required", fill=BLACK, font=title_font)
+    y += 80 * scale
 
     # Separator
-    draw.line([(x, y), (W - MARGIN, y)], fill=GRAY_MID, width=2)
-    y += 36
+    draw.line([(x, y), (W * scale - MARGIN * scale, y)], fill=GRAY_MID, width=2 * scale)
+    y += 36 * scale
 
-    step_font = _font(56, bold=True)
-    text_font = _font(44)
-    code_font = _font(38)
-    indent = x + 24
+    step_font = _font(56 * scale, bold=True)
+    text_font = _font(44 * scale)
+    code_font = _font(38 * scale)
+    indent = x + 24 * scale
 
     steps = [
         ("step", "1. Create Google OAuth Credentials"),
@@ -557,29 +559,28 @@ def render_setup_required(lan_ip: str, port: int) -> Image.Image:
 
     for kind, line in steps:
         if kind == "blank":
-            y += 16
+            y += 16 * scale
         elif kind == "step":
-            draw.text((x, y), line, fill=BLACK, font=step_font,
-                      stroke_width=2, stroke_fill=BLACK)
-            y += 64
+            draw.text((x, y), line, fill=BLACK, font=step_font)
+            y += 64 * scale
         elif kind == "text":
-            draw.text((indent, y), line, fill=GRAY_DARK, font=text_font,
-                      stroke_width=2, stroke_fill=GRAY_DARK)
-            y += 54
+            draw.text((indent, y), line, fill=GRAY_DARK, font=text_font)
+            y += 54 * scale
         elif kind == "code":
             tw = _text_w(draw, line, code_font)
-            box_w = min(tw + 24, W - MARGIN - indent + 8)
-            box_h = 48
-            draw.rectangle([indent - 8, y - 2, indent - 8 + box_w + 2, y + box_h + 2],
-                           outline=GRAY_MID, width=2)
-            # Truncate if too long
+            box_w = min(tw + 24 * scale, W * scale - MARGIN * scale - indent + 8 * scale)
+            box_h = 48 * scale
+            draw.rectangle([indent - 8 * scale, y - 2 * scale,
+                           indent - 8 * scale + box_w + 2 * scale, y + box_h + 2 * scale],
+                           outline=GRAY_MID, width=2 * scale)
             display = line
-            while _text_w(draw, display, code_font) > W - MARGIN - indent - 16 and len(display) > 3:
+            while _text_w(draw, display, code_font) > W * scale - MARGIN * scale - indent - 16 * scale and len(display) > 3:
                 display = display[:-1]
             if display != line:
                 display = display[:-1] + "…"
-            draw.text((indent, y + 4), display, fill=BLACK, font=code_font,
-                      stroke_width=2, stroke_fill=BLACK)
-            y += 56
+            draw.text((indent, y + 4 * scale), display, fill=BLACK, font=code_font)
+            y += 56 * scale
 
-    return img
+    # Downscale with LANCZOS (high-quality cubic filter) — matches C driver's
+    # bilinear downscale but produces slightly sharper results at same quality.
+    return canvas.resize((W, H), Image.LANCZOS)

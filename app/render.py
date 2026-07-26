@@ -386,33 +386,6 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         span_min = 16 * 60  # fallback 16h
     minute_h = grid_h / span_min  # pixels per minute
 
-    # Day headers
-    dow_font = _font(30, bold=True)
-    date_font = _font(24)
-    for i in range(days):
-        d = start_date + datetime.timedelta(days=i)
-        x = grid_x + i * col_w
-        cx = x + col_w // 2
-
-        dow = d.strftime("%a")
-        dw = _text_w(draw, dow, dow_font)
-        draw.text((cx - dw // 2, grid_y - 56), dow, fill=GRAY_DARK, font=dow_font)
-
-        date_str = str(d.day)
-        dw2 = _text_w(draw, date_str, date_font)
-        color = BLACK
-        if d == today:
-            # Highlight today with a filled rectangle (3px padding around text)
-            tw = _text_w(draw, date_str, date_font)
-            th = _text_h(draw, date_str, date_font)
-            pad = 3
-            tx = cx - dw2 // 2
-            ty = grid_y - 26
-            draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
-            draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
-        else:
-            draw.text((cx - dw2 // 2, grid_y - 28), date_str, fill=color, font=date_font)
-
     # Full-day events — build data index early
     fd_y = HEADER_H + 10
     fd_events_by_date: dict[datetime.date, list[dict]] = {}
@@ -422,32 +395,6 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             if isinstance(d, datetime.datetime):
                 d = d.date()
             fd_events_by_date.setdefault(d, []).append(ev)
-
-    # Day headers
-    dow_font = _font(30, bold=True)
-    date_font = _font(24)
-    for i in range(days):
-        d = start_date + datetime.timedelta(days=i)
-        x = grid_x + i * col_w
-        cx = x + col_w // 2
-
-        dow = d.strftime("%a")
-        dw = _text_w(draw, dow, dow_font)
-        draw.text((cx - dw // 2, grid_y - 58), dow, fill=GRAY_DARK, font=dow_font)
-
-        date_str = str(d.day)
-        dw2 = _text_w(draw, date_str, date_font)
-        color = BLACK
-        if d == today:
-            tw = _text_w(draw, date_str, date_font)
-            th = _text_h(draw, date_str, date_font)
-            pad = 3
-            tx = cx - dw2 // 2
-            ty = grid_y - 24
-            draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
-            draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
-        else:
-            draw.text((cx - dw2 // 2, grid_y - 24), date_str, fill=color, font=date_font)
 
     # Grid border
     draw.rectangle([grid_x, grid_y, grid_x + days * col_w - 1, grid_y + grid_h - 1],
@@ -494,6 +441,32 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             draw.rounded_rectangle([x + 4, ey - 2, x + col_w - 4, ey + 22], radius=6,
                                    fill=GRAY_VLIGHT, outline=BLACK, width=2)
             draw.text((x + 8, ey - 1), label, fill=BLACK, font=fd_font)
+
+    # Day headers — drawn AFTER full-day events so dates stay on top of bars
+    dow_font = _font(30, bold=True)
+    date_font = _font(24)
+    for i in range(days):
+        d = start_date + datetime.timedelta(days=i)
+        x = grid_x + i * col_w
+        cx = x + col_w // 2
+
+        dow = d.strftime("%a")
+        dw = _text_w(draw, dow, dow_font)
+        draw.text((cx - dw // 2, grid_y - 58), dow, fill=GRAY_DARK, font=dow_font)
+
+        date_str = str(d.day)
+        dw2 = _text_w(draw, date_str, date_font)
+        color = BLACK
+        if d == today:
+            tw = _text_w(draw, date_str, date_font)
+            th = _text_h(draw, date_str, date_font)
+            pad = 3
+            tx = cx - dw2 // 2
+            ty = grid_y - 24
+            draw.rectangle([tx - pad, ty - pad, tx + tw + pad, ty + th + pad], fill=BLACK)
+            draw.text((tx, ty), date_str, fill=(255, 255, 255), font=date_font)
+        else:
+            draw.text((cx - dw2 // 2, grid_y - 24), date_str, fill=color, font=date_font)
 
     # Timed events
     timed_events_by_date: dict[datetime.date, list[dict]] = {}

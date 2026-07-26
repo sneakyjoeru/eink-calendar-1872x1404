@@ -543,6 +543,9 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
     dow_font = _font(40, bold=True)
     date_font = _font(40, bold=True)
+    # Compute baseline to center text vertically between header line (110) and grid top (170)
+    _bb = draw.textbbox((0, 0), "Mon", font=dow_font)
+    _line_y = 140 - (_bb[1] + _bb[3]) // 2
     now_min_total = now.hour * 60 + now.minute
     is_before_day = now_min_total < ds_min
     for i in range(days):
@@ -558,19 +561,18 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         gap = 6
         combined_w = dw + gap + dw2
         line_x = cx - combined_w // 2
+        line_y = _line_y
 
         if d == today:
             bb_dow = draw.textbbox((0, 0), dow, font=dow_font)
             bb_date = draw.textbbox((0, 0), date_str, font=date_font)
             pad = 4
-            line_y = grid_y - 44  # same baseline as other days
             rect_top = 110  # box touches header line
-            rect_bot = line_y + max(bb_dow[3], bb_date[3]) + pad
+            rect_bot = grid_y  # box reaches grid top
             draw.rectangle([x + 1, rect_top, x + col_w - 2, rect_bot], fill=BLACK)
             draw.text((line_x, line_y), dow, fill=WHITE, font=dow_font)
             draw.text((line_x + dw + gap, line_y), date_str, fill=WHITE, font=date_font)
         else:
-            line_y = grid_y - 44
             draw.text((line_x, line_y), dow, fill=GRAY_DARK, font=dow_font)
             draw.text((line_x + dw + gap, line_y), date_str, fill=BLACK, font=date_font)
 

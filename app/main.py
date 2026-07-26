@@ -153,6 +153,10 @@ def do_render(force: bool = False) -> bool:
         if settings["view_mode"] == "month":
             start = datetime.datetime(now.year, now.month, 1)
             end = start + datetime.timedelta(days=42)
+        elif settings["view_mode"] == "35days":
+            start = now - datetime.timedelta(days=now.weekday())
+            start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + datetime.timedelta(days=35)
         elif settings["view_mode"] == "7days":
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start + datetime.timedelta(days=7)
@@ -359,6 +363,7 @@ async def settings_page(request: Request):
     # Pre-compute selected attribute for each view mode (can't use Python
     # expressions in str.format() templates)
     sel_month = "selected" if s["view_mode"] == "month" else ""
+    sel_35days = "selected" if s["view_mode"] == "35days" else ""
     sel_week = "selected" if s["view_mode"] == "week" else ""
     sel_7days = "selected" if s["view_mode"] == "7days" else ""
     sel_24h = "selected" if s.get("time_format", "24h") == "24h" else ""
@@ -369,6 +374,7 @@ async def settings_page(request: Request):
         saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
         auth_section=auth_section,
         sel_month=sel_month,
+        sel_35days=sel_35days,
         sel_week=sel_week,
         sel_7days=sel_7days,
         sel_24h=sel_24h,
@@ -583,6 +589,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     <label>View Mode
       <select name="view_mode">
         <option value="month" {sel_month}>Month</option>
+        <option value="35days" {sel_35days}>Month (35 days)</option>
         <option value="week" {sel_week}>Week</option>
         <option value="7days" {sel_7days}>7 Days (from today)</option>
       </select>

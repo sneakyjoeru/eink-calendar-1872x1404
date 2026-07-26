@@ -526,6 +526,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
     dow_font = _font(40, bold=True)
     date_font = _font(40, bold=True)
+    now_min_total = now.hour * 60 + now.minute
+    is_before_day = now_min_total < ds_min
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
@@ -533,6 +535,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
         dow = d.strftime("%a")
         date_str = str(d.day)
+        if is_before_day and d == today:
+            date_str = " " + date_str  # shift left when indicator at top edge
 
         dw = _text_w(draw, dow, dow_font)
         dw2 = _text_w(draw, date_str, date_font)

@@ -241,60 +241,6 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
 
             day_num += datetime.timedelta(days=1)
 
-    # Month separator line — darker line between cells at month boundaries
-    _draw_month_separator(draw, grid_start, today, num_weeks,
-                          grid_x, grid_y, col_w, row_h)
-
-
-# ---- Month separator line ----
-def _draw_month_separator(draw, grid_start, today, num_weeks,
-                          grid_x, grid_y, col_w, row_h):
-    """Draw dark lines between days of different months.
-
-    Draws 3px black lines at month boundaries: vertical between columns,
-    horizontal between rows.
-    """
-    # Find first and last day belonging to current month
-    first_cur = None  # (week, col) of first day in current month
-    last_cur = None   # (week, col) of last day in current month
-    day_num = grid_start
-    for week in range(num_weeks):
-        for col in range(7):
-            if day_num.month == today.month:
-                if first_cur is None:
-                    first_cur = (week, col)
-                last_cur = (week, col)
-            day_num += datetime.timedelta(days=1)
-
-    if first_cur is None:
-        return
-
-    # Vertical separator before first day of current month (3px black)
-    w, c = first_cur
-    if c > 0:
-        lx = grid_x + c * col_w
-        ly = grid_y + w * row_h
-        draw.line([(lx, ly), (lx, ly + row_h - 1)], fill=BLACK, width=3)
-
-    # Vertical separator after last day of current month (3px black)
-    w, c = last_cur
-    if c < 6:
-        lx = grid_x + (c + 1) * col_w
-        ly = grid_y + w * row_h
-        draw.line([(lx, ly), (lx, ly + row_h - 1)], fill=BLACK, width=3)
-
-    # Horizontal separator at bottom of first month's row (separates prev-month mix)
-    w, c = first_cur
-    if c > 0 and w < num_weeks - 1:
-        ly = grid_y + (w + 1) * row_h - 1
-        draw.line([(grid_x, ly), (grid_x + 7 * col_w - 1, ly)], fill=BLACK, width=3)
-
-    # Horizontal separator at bottom of last month's row (if not last grid row)
-    w, c = last_cur
-    if w < num_weeks - 1:
-        ly = grid_y + (w + 1) * row_h - 1
-        draw.line([(grid_x, ly), (grid_x + 7 * col_w - 1, ly)], fill=BLACK, width=3)
-
 
 # ---- 35-days view (5 weeks from current week) ----
 def _render_35days(draw, events, now, max_full_day, date_format=""):
@@ -403,9 +349,7 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
 
             day_num += datetime.timedelta(days=1)
 
-    # Month separator line
-    _draw_month_separator(draw, start_date, today, num_weeks,
-                          grid_x, grid_y, col_w, row_h)
+
 def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format=""):
     """Week view — 7 day columns with timed events stacked vertically."""
     if date_format:

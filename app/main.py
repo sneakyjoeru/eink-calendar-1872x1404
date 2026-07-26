@@ -383,10 +383,14 @@ async def settings_page(request: Request):
     sel_df_B_d_Y = 'selected' if date_fmt == '%B %d, %Y' else ''
     sel_df_Ymd_a = 'selected' if date_fmt == '%Y.%m.%d %a' else ''
     sel_df_d_B_Y = 'selected' if date_fmt == '%d %B %Y' else ''
-    sel_df_a_b_d = 'selected' if date_fmt == '%a %b %d' else ''
-    sel_df_d_m_Y = 'selected' if date_fmt == '%d.%m.%Y' else ''
-    sel_df_m_d_Y = 'selected' if date_fmt == '%m/%d/%Y' else ''
-    sel_df_AB_d = 'selected' if date_fmt == '%A, %B %d' else ''
+    sel_a_b_d = 'selected' if date_fmt == '%a %b %d' else ''
+    sel_d_m_Y = 'selected' if date_fmt == '%d.%m.%Y' else ''
+    sel_m_d_Y = 'selected' if date_fmt == '%m/%d/%Y' else ''
+    sel_AB_d = 'selected' if date_fmt == '%A, %B %d' else ''
+    sel_Y_m_d = 'selected' if date_fmt == '%Y-%m-%d' else ''
+    sel_d_b_Y = 'selected' if date_fmt == '%d %b %Y' else ''
+    sel_b_d_Y = 'selected' if date_fmt == '%b %d, %Y' else ''
+    sel_AB_d_Y = 'selected' if date_fmt == '%A, %B %d, %Y' else ''
     dim_past = s.get("dim_past_events", False)
     crossed_dim = s.get("crossed_event_dim", False)
     ts_mod = s.get("text_size_modifier", 0)
@@ -413,10 +417,14 @@ async def settings_page(request: Request):
         sel_df_B_d_Y=sel_df_B_d_Y,
         sel_df_Ymd_a=sel_df_Ymd_a,
         sel_df_d_B_Y=sel_df_d_B_Y,
-        sel_df_a_b_d=sel_df_a_b_d,
-        sel_df_d_m_Y=sel_df_d_m_Y,
-        sel_df_m_d_Y=sel_df_m_d_Y,
-        sel_df_AB_d=sel_df_AB_d,
+        sel_a_b_d=sel_a_b_d,
+        sel_d_m_Y=sel_d_m_Y,
+        sel_m_d_Y=sel_m_d_Y,
+        sel_AB_d=sel_AB_d,
+        sel_Y_m_d=sel_Y_m_d,
+        sel_d_b_Y=sel_d_b_Y,
+        sel_b_d_Y=sel_b_d_Y,
+        sel_AB_d_Y=sel_AB_d_Y,
         dim_past='checked' if dim_past else '',
         crossed_dim='checked' if crossed_dim else '',
         ts_mod=ts_mod,
@@ -834,6 +842,14 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <option value="%B %d, %Y" {sel_df_B_d_Y}>July 26, 2026</option>
         <option value="%Y.%m.%d %a" {sel_df_Ymd_a}>2026.07.26 Sun</option>
         <option value="%d %B %Y" {sel_df_d_B_Y}>26 July 2026</option>
+        <option value="%a %b %d" {sel_a_b_d}>Sun Jul 26</option>
+        <option value="%d.%m.%Y" {sel_d_m_Y}>26.07.2026</option>
+        <option value="%m/%d/%Y" {sel_m_d_Y}>07/26/2026</option>
+        <option value="%A, %B %d" {sel_AB_d}>Sunday, July 26</option>
+        <option value="%Y-%m-%d" {sel_Y_m_d}>2026-07-26</option>
+        <option value="%d %b %Y" {sel_d_b_Y}>26 Jul 2026</option>
+        <option value="%b %d, %Y" {sel_b_d_Y}>Jul 26, 2026</option>
+        <option value="%A, %B %d, %Y" {sel_AB_d_Y}>Sunday, July 26, 2026</option>
       </select>
     </label>
 </div>

@@ -555,8 +555,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         xl = x + 6 + SHRINK * 3
                         xr = x + col_w - 4
             else:
-                xl = x + 6
-                xr = x + col_w - 6
+                xl = x + 4
+                xr = x + col_w - 4
 
             draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
                                    fill=GRAY_VLIGHT, outline=BLACK, width=2)
@@ -566,6 +566,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             time_str = _ev_time_str(ev, now)
             avail_w = xr - xl - 8
             line_h = 26
+            txt_x = xl + 10
 
             if summary and summary != "(No title)":
                 # Wrap title text to fit box width
@@ -575,15 +576,15 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 for line in title_lines:
                     if y + line_h > ey_top + eh - 8:
                         break
-                    draw.text((xl + 4, y), line, fill=BLACK, font=event_font)
+                    draw.text((txt_x, y), line, fill=BLACK, font=event_font)
                     y += line_h
-                # Time right below title with spacing
+                # Time right below title with spacing — use event_font for consistency
                 if time_str and y + line_h <= ey_top + eh:
                     y += 4
-                    draw.text((xl + 4, y), time_str, fill=BLACK, font=event_font_sm)
+                    draw.text((txt_x, y), time_str, fill=BLACK, font=event_font)
             elif time_str:
                 # No title, just time
-                draw.text((xl + 4, ey_top + 4), time_str, fill=BLACK, font=event_font)
+                draw.text((txt_x, ey_top + 4), time_str, fill=BLACK, font=event_font)
 
 
 def _wrap_text_lines(draw, text, font, max_w):

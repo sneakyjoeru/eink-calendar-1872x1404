@@ -223,6 +223,10 @@ def _render_month(draw, events, now, max_full_day, date_format=""):
                     draw.text((x + 8, ey), line, fill=GRAY_DARK, font=event_font)
                     ey += 24
                 ev_idx += 1
+            # Show +counter if events remain that couldn't fit at all
+            if ev_idx < len(visible_events) and ey + 24 > y + row_h - 4:
+                remaining = len(visible_events) - ev_idx
+                draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
 
             day_num += datetime.timedelta(days=1)
 
@@ -351,26 +355,28 @@ def _render_35days(draw, events, now, max_full_day, date_format=""):
             else:
                 draw.text((x + 10, y + 6), day_str, fill=BLACK, font=cell_font)
 
-            # Events for this day (fill cell as space permits)
+            # Events for this day (wrap by syllables, fill cell as space permits)
             day_events = events_by_date.get(day_num, [])
-            max_ev = max(0, (row_h - 48) // 24)
+            cell_avail_w = col_w - 16
+            visible_events = [ev for ev in day_events if ev.get("summary", "") not in ("", "(No title)")]
             ey = y + 48
-            for ev in day_events[:max_ev]:
-                if ev.get("summary", "") in ("", "(No title)"):
-                    continue
+            ev_idx = 0
+            while ev_idx < len(visible_events) and ey + 24 <= y + row_h - 4:
+                ev = visible_events[ev_idx]
                 ev_time = _ev_time_str(ev, now)
-                if ev_time:
-                    label = f"{ev_time} {ev['summary']}"
-                else:
-                    label = ev["summary"]
-                if _text_w(draw, label, event_font) > col_w - 16:
-                    while len(label) > 4 and _text_w(draw, label + "…", event_font) > col_w - 16:
-                        label = label[:-1]
-                    label += "…"
-                draw.text((x + 8, ey), label, fill=GRAY_DARK, font=event_font)
-                ey += 24
-            remaining = max(0, len(day_events) - max_ev)
-            if remaining > 0:
+                base = f"{ev_time} {ev['summary']}" if ev_time else ev["summary"]
+                wrapped = _wrap_text_lines(draw, base, event_font, cell_avail_w)
+                for line in wrapped:
+                    if ey + 24 > y + row_h - 4:
+                        remaining = len(visible_events) - ev_idx
+                        draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
+                        break
+                    draw.text((x + 8, ey), line, fill=GRAY_DARK, font=event_font)
+                    ey += 24
+                ev_idx += 1
+            # Ensure +counter when some events couldn't fit at all
+            remaining = len(visible_events) - ev_idx
+            if remaining > 0 and ey + 24 > y + row_h - 4:
                 draw.text((x + 8, ey), f"+{remaining}", fill=GRAY_MID, font=_font(18))
 
             day_num += datetime.timedelta(days=1)

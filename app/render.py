@@ -823,10 +823,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
     hour_font = _font(26, bold=True)
     max_label_w = 0
     for h in range(ds_h, de_h + 1):
-        if False:  # 12h not used here
-            pass
-        else:
-            label = f"{h:02d}"
+        label = f"{h:02d}"
         lw = _text_w(draw, label, hour_font)
         if lw > max_label_w:
             max_label_w = lw

@@ -35,6 +35,7 @@ _last_events_hash: str = ""
 _last_time_line_render: float = 0.0
 _last_render_date: str = ""  # track day changes for full refresh
 _render_lock = threading.Lock()
+_last_render_duration: float = 2.0  # measured render time (updated each render)
 
 
 def _get_lan_ip() -> str:
@@ -143,11 +144,12 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
     """Fetch events + render + display. Thread-safe with timeout.
     force_full: bypass diff, do full screen refresh."""
     logger.info("do_render(force=%s) starting", force)
+    _render_start = time.time()
     if not _render_lock.acquire(timeout=120):
         logger.error("do_render: could not acquire render lock within 120s")
         return False
     try:
-        global _last_events, _last_events_hash
+        global _last_events, _last_events_hash, _last_render_date, _last_render_duration
         settings = settings_store.load()
         now = _now()
 
@@ -212,7 +214,9 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4), force_full=force_full)
         if ok:
-            logger.info("Screen updated (events_changed=%s, %d events)", events_changed, len(events))
+            _last_render_duration = time.time() - _render_start
+            logger.info("Screen updated (events_changed=%s, %d events, %.1fs)",
+                        events_changed, len(events), _last_render_duration)
         return ok
     except Exception as e:
         logger.error("do_render exception: %s", e)
@@ -260,16 +264,88 @@ def background_loop():
 
             # Event poll (checks for event changes in all views)
             poll_interval = s.get("event_poll_interval_sec", 60)
-            do_render()
 
             # Time-line update — only for week/7days views
+            # Tied to fraction of hour: update at X:00, X:15, X:30, X:45 etc.
             view_mode = s.get("view_mode", "week")
-            if view_mode in ("week", "7days"):
-                tl_interval = s.get("time_line_interval_min", 15) * 60
-                now_ts = time.time()
-                if now_ts - _last_time_line_render >= tl_interval:
-                    do_render(force=True)
-                    _last_time_line_render = now_ts
+            tl_interval_min = s.get("time_line_interval_min", 15)
+            tl_interval = tl_interval_min * 60
+
+            # Determine if this poll should trigger a time-line update
+            now_dt = datetime.datetime.now()
+            now_ts = time.time()
+            should_update_tl = False
+
+            if tl_interval_min == 1:
+                # 1-min: update at start of each minute
+                if now_dt.second < poll_interval:
+                    should_update_tl = (now_ts - _last_time_line_render >= tl_interval)
+            else:
+                # Aligned to hour: 0, 15, 30, 45 etc.
+                if now_dt.minute % tl_interval_min == 0 and now_dt.second < poll_interval:
+                    should_update_tl = (now_ts - _last_time_line_render >= tl_interval)
+
+            if view_mode in ("week", "7days") and should_update_tl:
+                # Prepare render: fetch events + create image using NEXT minute's time,
+                # then sleep until the exact minute boundary and display
+                _render_start = time.time()
+
+                # Compute the target time = start of the NEXT minute
+                target_now = now_dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
+
+                # --- Phase 1: fetch events + render to image (no display) ---
+                if not _render_lock.acquire(timeout=120):
+                    pass
+                try:
+                    settings = settings_store.load()
+                    if settings["view_mode"] == "7days":
+                        ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
+                        ev_end = ev_start + datetime.timedelta(days=7)
+                    else:
+                        ev_start = target_now - datetime.timedelta(days=target_now.weekday())
+                        ev_start = ev_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                        ev_end = ev_start + datetime.timedelta(days=7)
+
+                    events = calendar_client.fetch_events(
+                        ev_start, ev_end, settings.get("selected_calendars") or None)
+
+                    img = render.render_calendar(
+                        view_mode=settings["view_mode"],
+                        events=events,
+                        day_start=settings["day_start"],
+                        day_end=settings["day_end"],
+                        max_full_day=settings["max_full_day_events"],
+                        time_format=settings.get("time_format", "24h"),
+                        date_format=settings.get("date_format", ""),
+                        settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
+                        crossed_event_dim=settings.get("crossed_event_dim", False),
+                        dim_past_events=settings.get("dim_past_events", False),
+                        text_size_modifier=settings.get("text_size_modifier", 0),
+                        now=target_now,  # use next minute so time-line is correct
+                    )
+                finally:
+                    _render_lock.release()
+
+                prepare_time = time.time() - _render_start
+
+                # --- Phase 2: wait for exact minute boundary, then display ---
+                now_dt2 = datetime.datetime.now()
+                sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
+                if sleep_sec > 0:
+                    time.sleep(sleep_sec)
+
+                # Display at the minute boundary
+                display_start = time.time()
+                driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
+                _last_time_line_render = time.time()
+                display_time = _last_time_line_render - display_start
+                logger.info("Smooth update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
+                            prepare_time, display_time,
+                            int(datetime.datetime.now().second),
+                            int(datetime.datetime.now().microsecond / 100000))
+            else:
+                # Regular poll for event changes (no forced refresh)
+                do_render()
 
             time.sleep(poll_interval)
         except Exception as e:
@@ -427,6 +503,7 @@ async def settings_page(request: Request):
         day_end=s["day_end"],
         max_fd=s["max_full_day_events"],
         tl_interval=s["time_line_interval_min"],
+        sel_tl_1='selected' if s['time_line_interval_min']==1 else '',
         sel_tl_5='selected' if s['time_line_interval_min']==5 else '',
         sel_tl_10='selected' if s['time_line_interval_min']==10 else '',
         sel_tl_15='selected' if s['time_line_interval_min']==15 else '',
@@ -434,6 +511,10 @@ async def settings_page(request: Request):
         sel_tl_60='selected' if s['time_line_interval_min']==60 else '',
         fr_val=s.get('full_refresh_interval_hours', 6),
         sel_fr_0='selected' if s.get('full_refresh_interval_hours', 6)==0 else '',
+        sel_fr_0_5='selected' if s.get('full_refresh_interval_hours', 6)==0.5 else '',
+        sel_fr_1='selected' if s.get('full_refresh_interval_hours', 6)==1 else '',
+        sel_fr_1_5='selected' if s.get('full_refresh_interval_hours', 6)==1.5 else '',
+        sel_fr_2='selected' if s.get('full_refresh_interval_hours', 6)==2 else '',
         sel_fr_3='selected' if s.get('full_refresh_interval_hours', 6)==3 else '',
         sel_fr_6='selected' if s.get('full_refresh_interval_hours', 6)==6 else '',
         sel_fr_12='selected' if s.get('full_refresh_interval_hours', 6)==12 else '',
@@ -493,7 +574,7 @@ async def update_settings(request: Request):
         "max_full_day_events": int(fd.get("max_full_day_events", 3)),
         "time_line_interval_min": int(fd.get("time_line_interval_min", 15)),
         "event_poll_interval_sec": int(fd.get("event_poll_interval_sec", 60)),
-        "full_refresh_interval_hours": int(fd.get("full_refresh_interval_hours", 6)),
+        "full_refresh_interval_hours": float(fd.get("full_refresh_interval_hours", 6)),
         "brightness": float(fd.get("brightness", 1.4)),
         "timezone": fd.get("timezone", ""),
         "time_format": fd.get("time_format", "24h"),
@@ -885,8 +966,9 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         </select>
       </label></div>
     </div>
-    <label>Update Interval
+    <label>Smooth Update Interval
       <select name="time_line_interval_min">
+        <option value="1" {sel_tl_1}>1 min</option>
         <option value="5" {sel_tl_5}>5 min</option>
         <option value="10" {sel_tl_10}>10 min</option>
         <option value="15" {sel_tl_15}>15 min</option>
@@ -897,6 +979,10 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     <label>Full Refresh Interval
       <select name="full_refresh_interval_hours">
         <option value="0" {sel_fr_0}>Never (only on day change)</option>
+        <option value="0.5" {sel_fr_0_5}>Every 30 min</option>
+        <option value="1" {sel_fr_1}>Every 1 hour</option>
+        <option value="1.5" {sel_fr_1_5}>Every 1.5 hours</option>
+        <option value="2" {sel_fr_2}>Every 2 hours</option>
         <option value="3" {sel_fr_3}>Every 3 hours</option>
         <option value="6" {sel_fr_6}>Every 6 hours</option>
         <option value="12" {sel_fr_12}>Every 12 hours</option>

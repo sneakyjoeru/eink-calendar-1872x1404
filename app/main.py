@@ -278,7 +278,7 @@ def background_loop():
             tl_interval = tl_interval_min * 60
 
             # Determine if this poll should trigger a time-line update
-            now_dt = datetime.datetime.now()
+            now_dt = _now()
             now_ts = time.time()
             should_update_tl = False
 
@@ -337,7 +337,7 @@ def background_loop():
 
                     prepare_time = time.time() - _render_start
 
-                    # Wait for exact minute boundary
+                    # Wait for exact minute boundary (use wall clock for sleep timing)
                     now_dt2 = datetime.datetime.now()
                     sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
                     if sleep_sec > 0:

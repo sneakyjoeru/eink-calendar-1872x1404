@@ -343,7 +343,7 @@ def background_loop():
                     if sleep_sec > 0:
                         time.sleep(sleep_sec)
 
-                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
+                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4), smooth=True)
                     _last_time_line_render = time.time()
                     logger.info("Smooth update (1-min): prepared in %.1fs, landed at :%02d.%01d",
                                 prepare_time,
@@ -398,7 +398,7 @@ def background_loop():
                         time.sleep(sleep_sec)
 
                     display_start = time.time()
-                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
+                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4), smooth=True)
                     _last_time_line_render = time.time()
                     display_time = _last_time_line_render - display_start
                     logger.info("Smooth update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
@@ -663,10 +663,10 @@ async def trigger_render():
 
 
 def _safe_render():
-    """Call do_render with full exception logging."""
-    logger.info("Manual render triggered")
+    """Call do_render with full exception logging. Forces full refresh."""
+    logger.info("Manual render triggered (full refresh)")
     try:
-        ok = do_render(force=True)
+        ok = do_render(force=True, force_full=True)
         logger.info("Manual render completed: %s", ok)
     except Exception as e:
         logger.error("Manual render failed: %s", e)

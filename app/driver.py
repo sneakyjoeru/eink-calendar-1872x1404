@@ -17,14 +17,16 @@ logger = logging.getLogger("eink.driver")
 
 _last_render_time = 0.0
 _use_diff = True  # Use regional diff update by default
+_use_smooth = False  # Only True for time-line updates (A2, no flash)
 _last_full_refresh = 0.0  # timestamp of last forced full refresh (set on first render)
 
 
-def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False) -> bool:
+def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False, smooth: bool = False) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
     Saves to a temp PNG, calls `it8951 --image <png> --brightness <f>`.
-    Uses regional diff (--soft) by default; full refresh when force_full=True.
+    Uses regional diff (--smooth for time-line, --soft for events) by default;
+    full refresh when force_full=True.
     Returns True on success.
     """
     global _last_render_time, _last_full_refresh
@@ -47,7 +49,13 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
             pass
         cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
         logger.info("Full refresh (forced)")
+    elif _use_diff and smooth:
+        # Smooth: A2 1-bit mode for time-line (no flash, but B&W only)
+        cmd = [binary, "--image", str(tmp_path),
+               "--brightness", str(brightness),
+               "--smooth", "--border-smooth", "20"]
     elif _use_diff:
+        # Soft: GC16 for event changes (preserves grayscale, slight flash)
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--soft", "--border-smooth", "20"]

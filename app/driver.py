@@ -1,8 +1,8 @@
 """Bridge to the C IT8951 driver binary.
 
 Renders a PIL image to PNG, then calls the C driver to display it.
-The C driver uses the optimized overlapped-A2-clear + 4bpp pipeline
-(~4s per full refresh at 1872x1404).
+Supports regional differential updates (--soft/--hard) that compare
+against the last displayed image and only refresh changed regions.
 """
 import logging
 import os
@@ -16,6 +16,7 @@ from . import config
 logger = logging.getLogger("eink.driver")
 
 _last_render_time = 0.0
+_use_diff = True  # Use regional diff update by default
 
 
 def render_to_screen(pil_image, brightness: float = 1.4) -> bool:
@@ -35,7 +36,13 @@ def render_to_screen(pil_image, brightness: float = 1.4) -> bool:
     tmp_path = config.TMP_DIR / "render.png"
     pil_image.save(str(tmp_path), "PNG")
 
-    cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
+    # Use regional diff update (soft mode = no blinking) when available
+    if _use_diff:
+        cmd = [binary, "--image", str(tmp_path),
+               "--brightness", str(brightness),
+               "--soft", "--border-smooth", "20"]
+    else:
+        cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=30

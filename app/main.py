@@ -283,11 +283,13 @@ def background_loop():
             should_update_tl = False
 
             if tl_interval_min == 1:
-                # 1-min: update at start of each minute — check by minute value, not elapsed time
-                if now_dt.second < effective_poll:
+                # 1-min: trigger when we're within 8s of the next minute boundary
+                # This gives enough time to prepare the image before :00
+                secs_to_next = 60 - now_dt.second
+                if secs_to_next <= 8 and secs_to_next > 0:
                     last_min = datetime.datetime.fromtimestamp(_last_time_line_render).strftime("%Y-%m-%d %H:%M")
-                    curr_min = now_dt.strftime("%Y-%m-%d %H:%M")
-                    should_update_tl = (last_min != curr_min)
+                    next_min = (now_dt + datetime.timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
+                    should_update_tl = (last_min != next_min)
             else:
                 # Aligned to hour: 0, 15, 30, 45 etc.
                 if now_dt.minute % tl_interval_min == 0 and now_dt.second < effective_poll:
@@ -297,8 +299,8 @@ def background_loop():
                 # For 1-min interval: render with current minute and display immediately
                 # For larger intervals: pre-render then wait for exact boundary
                 if tl_interval_min == 1:
-                    # Immediate update — poll already caught the start of the minute
-                    target_now = now_dt.replace(second=0, microsecond=0)
+                    # Pre-render for the NEXT minute, then wait for :00 to display
+                    target_now = (now_dt + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
                     _render_start = time.time()
 
                     if not _render_lock.acquire(timeout=120):
@@ -334,6 +336,13 @@ def background_loop():
                         _render_lock.release()
 
                     prepare_time = time.time() - _render_start
+
+                    # Wait for exact minute boundary
+                    now_dt2 = datetime.datetime.now()
+                    sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
+                    if sleep_sec > 0:
+                        time.sleep(sleep_sec)
+
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
                     _last_time_line_render = time.time()
                     logger.info("Smooth update (1-min): prepared in %.1fs, landed at :%02d.%01d",

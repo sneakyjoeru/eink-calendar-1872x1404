@@ -286,63 +286,108 @@ def background_loop():
                     should_update_tl = (now_ts - _last_time_line_render >= tl_interval)
 
             if view_mode in ("week", "7days") and should_update_tl:
-                # Prepare render: fetch events + create image using NEXT minute's time,
-                # then sleep until the exact minute boundary and display
-                _render_start = time.time()
+                # For 1-min interval: render with current minute and display immediately
+                # For larger intervals: pre-render then wait for exact boundary
+                if tl_interval_min == 1:
+                    # Immediate update — poll already caught the start of the minute
+                    target_now = now_dt.replace(second=0, microsecond=0)
+                    _render_start = time.time()
 
-                # Compute the target time = start of the NEXT minute
-                target_now = now_dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
+                    if not _render_lock.acquire(timeout=120):
+                        pass
+                    try:
+                        settings = settings_store.load()
+                        if settings["view_mode"] == "7days":
+                            ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
+                            ev_end = ev_start + datetime.timedelta(days=7)
+                        else:
+                            ev_start = target_now - datetime.timedelta(days=target_now.weekday())
+                            ev_start = ev_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                            ev_end = ev_start + datetime.timedelta(days=7)
 
-                # --- Phase 1: fetch events + render to image (no display) ---
-                if not _render_lock.acquire(timeout=120):
-                    pass
-                try:
-                    settings = settings_store.load()
-                    if settings["view_mode"] == "7days":
-                        ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
-                        ev_end = ev_start + datetime.timedelta(days=7)
-                    else:
-                        ev_start = target_now - datetime.timedelta(days=target_now.weekday())
-                        ev_start = ev_start.replace(hour=0, minute=0, second=0, microsecond=0)
-                        ev_end = ev_start + datetime.timedelta(days=7)
+                        events = calendar_client.fetch_events(
+                            ev_start, ev_end, settings.get("selected_calendars") or None)
 
-                    events = calendar_client.fetch_events(
-                        ev_start, ev_end, settings.get("selected_calendars") or None)
+                        img = render.render_calendar(
+                            view_mode=settings["view_mode"],
+                            events=events,
+                            day_start=settings["day_start"],
+                            day_end=settings["day_end"],
+                            max_full_day=settings["max_full_day_events"],
+                            time_format=settings.get("time_format", "24h"),
+                            date_format=settings.get("date_format", ""),
+                            settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
+                            crossed_event_dim=settings.get("crossed_event_dim", False),
+                            dim_past_events=settings.get("dim_past_events", False),
+                            text_size_modifier=settings.get("text_size_modifier", 0),
+                            now=target_now,
+                        )
+                    finally:
+                        _render_lock.release()
 
-                    img = render.render_calendar(
-                        view_mode=settings["view_mode"],
-                        events=events,
-                        day_start=settings["day_start"],
-                        day_end=settings["day_end"],
-                        max_full_day=settings["max_full_day_events"],
-                        time_format=settings.get("time_format", "24h"),
-                        date_format=settings.get("date_format", ""),
-                        settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
-                        crossed_event_dim=settings.get("crossed_event_dim", False),
-                        dim_past_events=settings.get("dim_past_events", False),
-                        text_size_modifier=settings.get("text_size_modifier", 0),
-                        now=target_now,  # use next minute so time-line is correct
-                    )
-                finally:
-                    _render_lock.release()
+                    prepare_time = time.time() - _render_start
+                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
+                    _last_time_line_render = time.time()
+                    logger.info("Smooth update (1-min): prepared in %.1fs, landed at :%02d.%01d",
+                                prepare_time,
+                                int(datetime.datetime.now().second),
+                                int(datetime.datetime.now().microsecond / 100000))
+                else:
+                    # Larger interval: pre-render then wait for exact boundary
+                    _render_start = time.time()
 
-                prepare_time = time.time() - _render_start
+                    # Compute target time = start of this interval slot
+                    target_now = now_dt.replace(second=0, microsecond=0)
 
-                # --- Phase 2: wait for exact minute boundary, then display ---
-                now_dt2 = datetime.datetime.now()
-                sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
-                if sleep_sec > 0:
-                    time.sleep(sleep_sec)
+                    # --- Phase 1: fetch events + render to image (no display) ---
+                    if not _render_lock.acquire(timeout=120):
+                        pass
+                    try:
+                        settings = settings_store.load()
+                        if settings["view_mode"] == "7days":
+                            ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
+                            ev_end = ev_start + datetime.timedelta(days=7)
+                        else:
+                            ev_start = target_now - datetime.timedelta(days=target_now.weekday())
+                            ev_start = ev_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                            ev_end = ev_start + datetime.timedelta(days=7)
 
-                # Display at the minute boundary
-                display_start = time.time()
-                driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
-                _last_time_line_render = time.time()
-                display_time = _last_time_line_render - display_start
-                logger.info("Smooth update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
-                            prepare_time, display_time,
-                            int(datetime.datetime.now().second),
-                            int(datetime.datetime.now().microsecond / 100000))
+                        events = calendar_client.fetch_events(
+                            ev_start, ev_end, settings.get("selected_calendars") or None)
+
+                        img = render.render_calendar(
+                            view_mode=settings["view_mode"],
+                            events=events,
+                            day_start=settings["day_start"],
+                            day_end=settings["day_end"],
+                            max_full_day=settings["max_full_day_events"],
+                            time_format=settings.get("time_format", "24h"),
+                            date_format=settings.get("date_format", ""),
+                            settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
+                            crossed_event_dim=settings.get("crossed_event_dim", False),
+                            dim_past_events=settings.get("dim_past_events", False),
+                            text_size_modifier=settings.get("text_size_modifier", 0),
+                            now=target_now,
+                        )
+                    finally:
+                        _render_lock.release()
+
+                    prepare_time = time.time() - _render_start
+
+                    # --- Phase 2: wait for exact minute boundary, then display ---
+                    now_dt2 = datetime.datetime.now()
+                    sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
+                    if sleep_sec > 0:
+                        time.sleep(sleep_sec)
+
+                    display_start = time.time()
+                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
+                    _last_time_line_render = time.time()
+                    display_time = _last_time_line_render - display_start
+                    logger.info("Smooth update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
+                                prepare_time, display_time,
+                                int(datetime.datetime.now().second),
+                                int(datetime.datetime.now().microsecond / 100000))
             else:
                 # Regular poll for event changes (no forced refresh)
                 do_render()

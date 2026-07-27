@@ -17,7 +17,7 @@ logger = logging.getLogger("eink.driver")
 
 _last_render_time = 0.0
 _use_diff = True  # Use regional diff update by default
-_last_full_refresh = 0.0  # timestamp of last forced full refresh
+_last_full_refresh = 0.0  # timestamp of last forced full refresh (set on first render)
 
 
 def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False) -> bool:
@@ -61,7 +61,7 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
             logger.error("IT8951 driver error: %s", result.stderr[-500:])
             return False
         _last_render_time = time.time()
-        if force_full:
+        if force_full or _last_full_refresh == 0.0:
             _last_full_refresh = _last_render_time
         logger.info("Rendered to screen (%.1fs)", time.time() - (_last_render_time - 0.001))
         return True
@@ -80,6 +80,8 @@ def needs_full_refresh(interval_hours: float = 0) -> bool:
     import time
     if interval_hours <= 0:
         return False
+    if _last_full_refresh == 0.0:
+        return False  # haven't done any render yet, don't force on first
     return (time.time() - _last_full_refresh) >= interval_hours * 3600
 
 

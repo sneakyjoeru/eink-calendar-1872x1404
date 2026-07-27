@@ -33,6 +33,7 @@ app = FastAPI(title="E-Ink Calendar")
 _last_events: list[dict] = []
 _last_events_hash: str = ""
 _last_time_line_render: float = 0.0
+_last_render_date: str = ""  # track day changes for full refresh
 _render_lock = threading.Lock()
 
 
@@ -138,8 +139,9 @@ def _events_hash(events: list[dict]) -> str:
 
 # ---- Rendering pipeline ----
 
-def do_render(force: bool = False) -> bool:
-    """Fetch events + render + display. Thread-safe with timeout."""
+def do_render(force: bool = False, force_full: bool = False) -> bool:
+    """Fetch events + render + display. Thread-safe with timeout.
+    force_full: bypass diff, do full screen refresh."""
     logger.info("do_render(force=%s) starting", force)
     if not _render_lock.acquire(timeout=120):
         logger.error("do_render: could not acquire render lock within 120s")
@@ -179,6 +181,21 @@ def do_render(force: bool = False) -> bool:
             logger.debug("No event changes, skipping render")
             return False
 
+        # Check for day change — force full refresh
+        global _last_render_date
+        today_str = now.strftime("%Y-%m-%d")
+        if _last_render_date and _last_render_date != today_str:
+            force_full = True
+            logger.info("Day changed (%s → %s), forcing full refresh", _last_render_date, today_str)
+        _last_render_date = today_str
+
+        # Check full refresh interval setting
+        if not force_full:
+            full_interval = settings.get("full_refresh_interval_hours", 0)
+            if full_interval and driver.needs_full_refresh(full_interval):
+                force_full = True
+                logger.info("Full refresh interval (%dh) elapsed, forcing full refresh", full_interval)
+
         img = render.render_calendar(
             view_mode=settings["view_mode"],
             events=events,
@@ -193,7 +210,7 @@ def do_render(force: bool = False) -> bool:
             text_size_modifier=settings.get("text_size_modifier", 0),
             now=now,
         )
-        ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4))
+        ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4), force_full=force_full)
         if ok:
             logger.info("Screen updated (events_changed=%s, %d events)", events_changed, len(events))
         return ok
@@ -415,6 +432,12 @@ async def settings_page(request: Request):
         sel_tl_15='selected' if s['time_line_interval_min']==15 else '',
         sel_tl_30='selected' if s['time_line_interval_min']==30 else '',
         sel_tl_60='selected' if s['time_line_interval_min']==60 else '',
+        fr_val=s.get('full_refresh_interval_hours', 6),
+        sel_fr_0='selected' if s.get('full_refresh_interval_hours', 6)==0 else '',
+        sel_fr_3='selected' if s.get('full_refresh_interval_hours', 6)==3 else '',
+        sel_fr_6='selected' if s.get('full_refresh_interval_hours', 6)==6 else '',
+        sel_fr_12='selected' if s.get('full_refresh_interval_hours', 6)==12 else '',
+        sel_fr_24='selected' if s.get('full_refresh_interval_hours', 6)==24 else '',
         sel_fd_0='selected' if s['max_full_day_events']==0 else '',
         sel_fd_1='selected' if s['max_full_day_events']==1 else '',
         sel_fd_2='selected' if s['max_full_day_events']==2 else '',
@@ -470,6 +493,7 @@ async def update_settings(request: Request):
         "max_full_day_events": int(fd.get("max_full_day_events", 3)),
         "time_line_interval_min": int(fd.get("time_line_interval_min", 15)),
         "event_poll_interval_sec": int(fd.get("event_poll_interval_sec", 60)),
+        "full_refresh_interval_hours": int(fd.get("full_refresh_interval_hours", 6)),
         "brightness": float(fd.get("brightness", 1.4)),
         "timezone": fd.get("timezone", ""),
         "time_format": fd.get("time_format", "24h"),
@@ -869,6 +893,16 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <option value="30" {sel_tl_30}>30 min</option>
         <option value="60" {sel_tl_60}>60 min</option>
       </select>
+    </label>
+    <label>Full Refresh Interval
+      <select name="full_refresh_interval_hours">
+        <option value="0" {sel_fr_0}>Never (only on day change)</option>
+        <option value="3" {sel_fr_3}>Every 3 hours</option>
+        <option value="6" {sel_fr_6}>Every 6 hours</option>
+        <option value="12" {sel_fr_12}>Every 12 hours</option>
+        <option value="24" {sel_fr_24}>Every 24 hours</option>
+      </select>
+      <div class="note">Forces full-screen refresh to clear ghosting</div>
     </label>
     <label>Timezone
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP">

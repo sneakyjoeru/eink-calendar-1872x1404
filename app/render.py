@@ -620,12 +620,21 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     overlap_idxs.append(j)
 
             if overlap_idxs:
-                # Use the nearest overlapping event (by index) for split direction
-                closest = min(overlap_idxs, key=lambda j: abs(j - idx))
-                other_dur = ev_infos[closest][4]
-                if duration >= other_dur:
+                # Rank this event's duration among all overlapping events
+                all_durs = sorted([ev_infos[k][4] for k in overlap_idxs] + [duration], reverse=True)
+                rank = all_durs.index(duration)  # 0 = longest
+
+                if rank == 0:
+                    # Longest event: left side, original size
                     xl, xr = x + 6, x + col_w - 6 - SHRINK
+                elif rank == 1 and len(all_durs) >= 3:
+                    # Middle event (3-way overlap): medium shrink
+                    xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
+                elif len(overlap_idxs) >= 2:
+                    # Shortest in 3+ overlap: render on top, 2x shrink
+                    xl, xr = x + 6 + SHRINK * 6, x + col_w - 4 - SHRINK * 3
                 else:
+                    # 1 overlap, shorter event: original shrink
                     xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
             else:
                 xl, xr = x + 4, x + col_w - 4

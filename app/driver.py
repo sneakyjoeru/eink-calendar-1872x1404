@@ -17,15 +17,17 @@ logger = logging.getLogger("eink.driver")
 
 _last_render_time = 0.0
 _use_diff = True  # Use regional diff update by default
+_last_full_refresh = 0.0  # timestamp of last forced full refresh
 
 
-def render_to_screen(pil_image, brightness: float = 1.4) -> bool:
+def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
     Saves to a temp PNG, calls `it8951 --image <png> --brightness <f>`.
+    Uses regional diff (--soft) by default; full refresh when force_full=True.
     Returns True on success.
     """
-    global _last_render_time
+    global _last_render_time, _last_full_refresh
     import time
 
     binary = config.IT8951_BINARY
@@ -36,8 +38,16 @@ def render_to_screen(pil_image, brightness: float = 1.4) -> bool:
     tmp_path = config.TMP_DIR / "render.png"
     pil_image.save(str(tmp_path), "PNG")
 
-    # Use regional diff update (soft mode = no blinking) when available
-    if _use_diff:
+    # Full refresh: delete diff cache so driver does full screen
+    if force_full:
+        import os
+        try:
+            os.remove("/tmp/it8951_last.png")
+        except OSError:
+            pass
+        cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
+        logger.info("Full refresh (forced)")
+    elif _use_diff:
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--soft", "--border-smooth", "20"]
@@ -51,6 +61,8 @@ def render_to_screen(pil_image, brightness: float = 1.4) -> bool:
             logger.error("IT8951 driver error: %s", result.stderr[-500:])
             return False
         _last_render_time = time.time()
+        if force_full:
+            _last_full_refresh = _last_render_time
         logger.info("Rendered to screen (%.1fs)", time.time() - (_last_render_time - 0.001))
         return True
     except subprocess.TimeoutExpired:
@@ -59,6 +71,16 @@ def render_to_screen(pil_image, brightness: float = 1.4) -> bool:
     except Exception as e:
         logger.error("IT8951 driver exception: %s", e)
         return False
+
+
+def needs_full_refresh(interval_hours: float = 0) -> bool:
+    """Check if a full refresh is needed based on interval (hours).
+    Returns True if interval has elapsed since last full refresh.
+    interval_hours=0 means never force by interval (only day change triggers it)."""
+    import time
+    if interval_hours <= 0:
+        return False
+    return (time.time() - _last_full_refresh) >= interval_hours * 3600
 
 
 def render_clear() -> bool:

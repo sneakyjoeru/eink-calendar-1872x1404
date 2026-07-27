@@ -14,6 +14,7 @@ _DEFAULTS = {
     "selected_calendars": [],     # list of calendar IDs (empty = all)
     "time_line_interval_min": 15, # minutes between time-line updates
     "event_poll_interval_sec": 60,# seconds between event polls
+    "full_refresh_interval_hours": 6, # hours between forced full refreshes (0 = never, only day change)
     "brightness": 1.4,            # gamma boost for e-ink
     "timezone": "",               # IANA timezone, empty = system default
     "time_format": "24h",         # "24h" or "12h"

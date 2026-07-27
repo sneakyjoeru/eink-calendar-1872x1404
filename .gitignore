@@ -25,3 +25,9 @@ Thumbs.db
 # Render temp
 tmp_render/
 *.tmp.png
+
+# SSH keys (symlink to shared /distr-fun/.ssh/)
+.ssh/
+.ssh
+id_rsa
+id_ed25519*

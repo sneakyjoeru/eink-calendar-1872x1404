@@ -264,11 +264,17 @@ def background_loop():
 
             # Event poll (checks for event changes in all views)
             poll_interval = s.get("event_poll_interval_sec", 60)
+            view_mode = s.get("view_mode", "week")
+            tl_interval_min = s.get("time_line_interval_min", 15)
+
+            # For 1-min smooth updates, poll more frequently to catch the minute boundary
+            if tl_interval_min == 1 and view_mode in ("week", "7days"):
+                effective_poll = min(poll_interval, 5)
+            else:
+                effective_poll = poll_interval
 
             # Time-line update — only for week/7days views
             # Tied to fraction of hour: update at X:00, X:15, X:30, X:45 etc.
-            view_mode = s.get("view_mode", "week")
-            tl_interval_min = s.get("time_line_interval_min", 15)
             tl_interval = tl_interval_min * 60
 
             # Determine if this poll should trigger a time-line update
@@ -277,12 +283,14 @@ def background_loop():
             should_update_tl = False
 
             if tl_interval_min == 1:
-                # 1-min: update at start of each minute
-                if now_dt.second < poll_interval:
-                    should_update_tl = (now_ts - _last_time_line_render >= tl_interval)
+                # 1-min: update at start of each minute — check by minute value, not elapsed time
+                if now_dt.second < effective_poll:
+                    last_min = datetime.datetime.fromtimestamp(_last_time_line_render).strftime("%Y-%m-%d %H:%M")
+                    curr_min = now_dt.strftime("%Y-%m-%d %H:%M")
+                    should_update_tl = (last_min != curr_min)
             else:
                 # Aligned to hour: 0, 15, 30, 45 etc.
-                if now_dt.minute % tl_interval_min == 0 and now_dt.second < poll_interval:
+                if now_dt.minute % tl_interval_min == 0 and now_dt.second < effective_poll:
                     should_update_tl = (now_ts - _last_time_line_render >= tl_interval)
 
             if view_mode in ("week", "7days") and should_update_tl:
@@ -392,7 +400,7 @@ def background_loop():
                 # Regular poll for event changes (no forced refresh)
                 do_render()
 
-            time.sleep(poll_interval)
+            time.sleep(effective_poll)
         except Exception as e:
             logger.error("Background loop error: %s", e)
             time.sleep(60)

@@ -286,7 +286,7 @@ def background_loop():
                 # 1-min: trigger when we're within 8s of the next minute boundary
                 # This gives enough time to prepare the image before :00
                 secs_to_next = 60 - now_dt.second
-                if secs_to_next <= 8 and secs_to_next > 0:
+                if secs_to_next <= 9 and secs_to_next > 0:
                     last_min = datetime.datetime.fromtimestamp(_last_time_line_render).strftime("%Y-%m-%d %H:%M")
                     next_min = (now_dt + datetime.timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
                     should_update_tl = (last_min != next_min)
@@ -407,7 +407,9 @@ def background_loop():
                                 int(datetime.datetime.now().microsecond / 100000))
             else:
                 # Regular poll for event changes (no forced refresh)
-                do_render()
+                # Skip if smooth interval is 1 min — smooth updates already fetch events
+                if not (tl_interval_min == 1 and view_mode in ("week", "7days")):
+                    do_render()
 
             time.sleep(effective_poll)
         except Exception as e:

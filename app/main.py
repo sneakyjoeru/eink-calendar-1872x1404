@@ -684,10 +684,12 @@ async def trigger_render():
 
 
 def _safe_render():
-    """Call do_render with full exception logging. Forces full refresh."""
-    logger.info("Manual render triggered (full refresh)")
+    """Call do_render with full exception logging. Respects update_mode setting."""
+    s = settings_store.load()
+    force_full = s.get("update_mode", "soft") == "hard"
+    logger.info("Manual render triggered (force_full=%s)", force_full)
     try:
-        ok = do_render(force=True, force_full=True)
+        ok = do_render(force=True, force_full=force_full)
         logger.info("Manual render completed: %s", ok)
     except Exception as e:
         logger.error("Manual render failed: %s", e)

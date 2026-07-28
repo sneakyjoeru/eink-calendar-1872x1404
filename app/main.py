@@ -212,7 +212,10 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
             text_size_modifier=settings.get("text_size_modifier", 0),
             now=now,
         )
-        ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4), force_full=force_full)
+        ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
+                                     force_full=force_full,
+                                     update_mode=settings.get("update_mode", "soft"),
+                                     dither_border_mm=settings.get("dither_border_mm", 5))
         if ok:
             _last_render_duration = time.time() - _render_start
             logger.info("Screen updated (events_changed=%s, %d events, %.1fs)",
@@ -343,7 +346,10 @@ def background_loop():
                     if sleep_sec > 0:
                         time.sleep(sleep_sec)
 
-                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4), smooth=True)
+                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
+                                            smooth=True,
+                                            update_mode=settings.get("update_mode", "soft"),
+                                            dither_border_mm=settings.get("dither_border_mm", 5))
                     _last_time_line_render = time.time()
                     logger.info("Smooth update (1-min): prepared in %.1fs, landed at :%02d.%01d",
                                 prepare_time,
@@ -398,7 +404,10 @@ def background_loop():
                         time.sleep(sleep_sec)
 
                     display_start = time.time()
-                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4), smooth=True)
+                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
+                                            smooth=True,
+                                            update_mode=settings.get("update_mode", "soft"),
+                                            dither_border_mm=settings.get("dither_border_mm", 5))
                     _last_time_line_render = time.time()
                     display_time = _last_time_line_render - display_start
                     logger.info("Smooth update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
@@ -583,6 +592,16 @@ async def settings_page(request: Request):
         sel_fr_6='selected' if s.get('full_refresh_interval_hours', 6)==6 else '',
         sel_fr_12='selected' if s.get('full_refresh_interval_hours', 6)==12 else '',
         sel_fr_24='selected' if s.get('full_refresh_interval_hours', 6)==24 else '',
+        um=s.get('update_mode', 'soft'),
+        sel_um_soft='selected' if s.get('update_mode', 'soft')=='soft' else '',
+        sel_um_hard='selected' if s.get('update_mode', 'soft')=='hard' else '',
+        db_mm=s.get('dither_border_mm', 5),
+        sel_db_0='selected' if s.get('dither_border_mm', 5)==0 else '',
+        sel_db_2='selected' if s.get('dither_border_mm', 5)==2 else '',
+        sel_db_5='selected' if s.get('dither_border_mm', 5)==5 else '',
+        sel_db_10='selected' if s.get('dither_border_mm', 5)==10 else '',
+        sel_db_15='selected' if s.get('dither_border_mm', 5)==15 else '',
+        sel_db_20='selected' if s.get('dither_border_mm', 5)==20 else '',
         sel_fd_0='selected' if s['max_full_day_events']==0 else '',
         sel_fd_1='selected' if s['max_full_day_events']==1 else '',
         sel_fd_2='selected' if s['max_full_day_events']==2 else '',
@@ -639,6 +658,8 @@ async def update_settings(request: Request):
         "time_line_interval_min": int(fd.get("time_line_interval_min", 15)),
         "event_poll_interval_sec": int(fd.get("event_poll_interval_sec", 60)),
         "full_refresh_interval_hours": float(fd.get("full_refresh_interval_hours", 6)),
+        "update_mode": fd.get("update_mode", "soft"),
+        "dither_border_mm": float(fd.get("dither_border_mm", 5)),
         "brightness": float(fd.get("brightness", 1.4)),
         "timezone": fd.get("timezone", ""),
         "time_format": fd.get("time_format", "24h"),
@@ -1026,6 +1047,25 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
       <div><label>Text Size
         <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px">
         <div class="note">+ larger, − smaller</div>
+      </label></div>
+    </div>
+    <div class="row">
+      <div><label>Update Mode
+        <select name="update_mode">
+          <option value="soft" {sel_um_soft}>Soft (regional diff, slight flash)</option>
+          <option value="hard" {sel_um_hard}>Hard (full screen, clean refresh)</option>
+        </select>
+      </label></div>
+      <div><label>Dithering Border
+        <select name="dither_border_mm">
+          <option value="0" {sel_db_0}>None</option>
+          <option value="2" {sel_db_2}>2 mm (~24 px)</option>
+          <option value="5" {sel_db_5}>5 mm (~59 px)</option>
+          <option value="10" {sel_db_10}>10 mm (~119 px)</option>
+          <option value="15" {sel_db_15}>15 mm (~178 px)</option>
+          <option value="20" {sel_db_20}>20 mm (~237 px)</option>
+        </select>
+        <div class="note">Smooths edges of regional updates</div>
       </label></div>
     </div>
     <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:8px">🖼 Preview Display</a>

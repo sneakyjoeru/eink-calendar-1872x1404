@@ -17,17 +17,19 @@ logger = logging.getLogger("eink.driver")
 
 _last_render_time = 0.0
 _use_diff = True  # Use regional diff update by default
-_use_smooth = False  # Only True for time-line updates (A2, no flash)
 _last_full_refresh = 0.0  # timestamp of last forced full refresh (set on first render)
 
+# Screen: 1872×1404 px, 158×118.5 mm → ~11.85 px/mm
+PX_PER_MM = 11.85
 
-def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False, smooth: bool = False) -> bool:
+
+def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False,
+                      smooth: bool = False, update_mode: str = "soft",
+                      dither_border_mm: float = 5) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
-    Saves to a temp PNG, calls `it8951 --image <png> --brightness <f>`.
-    Uses regional diff (--smooth for time-line, --soft for events) by default;
-    full refresh when force_full=True.
-    Returns True on success.
+    update_mode: "hard" (full screen, no diff) or "soft" (regional diff GC16)
+    dither_border_mm: dithering border in mm (converted to px at ~11.85 px/mm)
     """
     global _last_render_time, _last_full_refresh
     import time
@@ -40,25 +42,23 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     tmp_path = config.TMP_DIR / "render.png"
     pil_image.save(str(tmp_path), "PNG")
 
+    # Convert mm to px for border-smooth
+    border_px = int(dither_border_mm * PX_PER_MM) if dither_border_mm > 0 else 0
+
     # Full refresh: delete diff cache so driver does full screen
-    if force_full:
+    if force_full or update_mode == "hard":
         import os
         try:
             os.remove("/tmp/it8951_last.png")
         except OSError:
             pass
         cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
-        logger.info("Full refresh (forced)")
-    elif _use_diff and smooth:
-        # Smooth: GC16 for time-line (slight flash but no ghosting/trails)
-        cmd = [binary, "--image", str(tmp_path),
-               "--brightness", str(brightness),
-               "--soft", "--border-smooth", "20"]
+        logger.info("Full refresh (forced=%s, mode=%s)", force_full, update_mode)
     elif _use_diff:
-        # Soft: GC16 for event changes (preserves grayscale)
+        # Soft: regional diff with GC16 + border dithering
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
-               "--soft", "--border-smooth", "20"]
+               "--soft", "--border-smooth", str(border_px)]
     else:
         cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
     try:

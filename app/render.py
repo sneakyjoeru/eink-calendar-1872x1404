@@ -880,16 +880,17 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
 
     y = grid_y + (now_min - ds_min) * minute_h
 
-    # White outline (dotted, 1px above and below the black line)
-    for dx in range(int(x_start), int(x_end), 8):
-        draw.line([(dx, y - 3), (min(dx + 4, x_end), y - 3)], fill=WHITE, width=1)
-        draw.line([(dx, y + 4), (min(dx + 4, x_end), y + 4)], fill=WHITE, width=1)
-
-    # Dotted black line (2px)
-    for dx in range(int(x_start), int(x_end), 6):
-        x2 = min(dx + 3, x_end)
-        draw.line([(dx, y - 1), (x2, y - 1)], fill=BLACK, width=2)
-        draw.line([(dx, y + 1), (x2, y + 1)], fill=BLACK, width=2)
+    # Striped time-line (same style as placeholder indicators)
+    stripe_w = 6
+    # White outline above and below
+    for sx in range(int(x_start), int(x_end), stripe_w * 2):
+        x2 = min(sx + stripe_w, x_end)
+        draw.rectangle([sx, y - 4, x2, y - 2], fill=WHITE)
+        draw.rectangle([sx, y + 3, x2, y + 5], fill=WHITE)
+    # Black striped line
+    for sx in range(int(x_start), int(x_end), stripe_w * 2):
+        x2 = min(sx + stripe_w, x_end)
+        draw.rectangle([sx, y - 2, x2, y + 2], fill=BLACK)
 
     # Small time label at the right edge of the line
     time_str = now.strftime("%H:%M")

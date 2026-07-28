@@ -689,6 +689,47 @@ async def health():
     return {"ok": True}
 
 
+@app.get("/image")
+async def get_last_image():
+    """Serve the last rendered e-ink image (from IT8951 diff cache)."""
+    img_path = "/tmp/it8951_last.png"
+    if not Path(img_path).exists():
+        return JSONResponse({"error": "No image cached"}, status_code=404)
+    return FileResponse(img_path, media_type="image/png", filename="eink-last.png")
+
+
+@app.get("/preview", response_class=HTMLResponse)
+async def preview_page():
+    """Live preview of the e-ink display — auto-refreshes every 15 seconds."""
+    return """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E-Ink Preview</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #eee; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; min-height: 100vh; }
+h1 { font-size: 1.2em; margin-bottom: 12px; color: #e94560; }
+img { max-width: 100%; max-height: 80vh; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); image-rendering: auto; }
+.status { font-size: 0.75em; color: #666; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>📺 E-Ink Live Preview</h1>
+<img id="preview" src="/image" alt="E-Ink Display" onload="document.getElementById('time').textContent='Updated: ' + new Date().toLocaleTimeString()">
+<p class="status" id="time">Loading...</p>
+<script>
+function refresh() {
+    var img = document.getElementById('preview');
+    img.src = '/image?t=' + Date.now();
+}
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>"""
+
+
 @app.post("/api/upload-secret")
 async def upload_secret(file: UploadFile = File(...)):
     """Upload client_secret.json for Google OAuth."""
@@ -987,6 +1028,7 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <div class="note">+ larger, − smaller</div>
       </label></div>
     </div>
+    <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:8px">🖼 Preview Display</a>
   </div>
 </div>
 

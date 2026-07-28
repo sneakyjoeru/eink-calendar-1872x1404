@@ -2,19 +2,25 @@
 
 E-ink calendar app for the **Waveshare 7.8" E-Ink HAT** (1872×1404, IT8951) on
 an **Orange Pi Zero 2W**. Syncs with **Google Calendar** via OAuth, exposes a
-settings web UI on the LAN, and renders month / week / 7-day views with a
-live current-time indicator line.
+settings web UI on the LAN, and renders month / week / 7-day / 35-day views
+with a live current-time indicator line.
 
 ## Features
 
 - 📅 **Google Calendar sync** — log in with a Google account, select which calendars to display
-- 🖥️ **Three view modes** — Month, Week, 7-days
+- 🖥️ **Four view modes** — Month, Month (5 weeks), Week, 7-days (from today)
 - ⏰ **Configurable day span** — set start/end-of-day times
-- 📋 **Full-day events** — display up to 3 full-day events per day
-- 📍 **Current-time line** — 2px black line with 1px white outline, auto-updates every 15 minutes
+- 📋 **Full-day events** — display 0–3 full-day events per day, stacked vertically
+- 📍 **Current-time line** — striped line with time label, auto-updates at configurable intervals (1 min – 60 min)
 - ⚡ **ASAP event updates** — screen refreshes when events are added or removed
-- 📐 **Screen-aware rendering** — optimized for 1872×1404 at 4bpp via the C IT8951 driver
-- 📱 **LAN setup via QR code** — the e-ink shows a QR code linking to the app's settings page, with LAN IP + port printed below
+- 🔄 **Regional differential updates** — only refreshes changed areas using the [IT8951 C driver](https://github.com/sneakyjoeru/it8951-epaper-c-orangepi-zero-2w) diff mode (`--soft`/`--smooth`), reducing flash and update time
+- 🌫️ **Dim past events** — past days and ended events are dimmed (toggleable)
+- 📏 **Text size modifier** — adjust all text sizes globally (+/- pixels)
+- 🔐 **HTTPS settings server** — self-signed SSL, OAuth via `http://localhost` redirect
+- 📱 **LAN setup via QR code** — the e-ink shows a QR code linking to the app's settings page
+- 🖼️ **Live preview** — view the current e-ink display from any browser at `/preview`
+- 📷 **Image endpoint** — fetch the last rendered image at `/image`
+- 📶 **WiFi hotspot** — captive portal for initial setup without an existing network
 - ⚙️ **FastAPI settings server** — configure everything from a browser on your phone/laptop
 
 ## Architecture
@@ -29,18 +35,21 @@ live current-time indicator line.
 │  └─────────────┘    │  - Calendar polling  │  │
 │       │ SPI         │  - PIL rendering      │  │
 │       ▼             │  - Settings API       │  │
-│  ┌─────────────┐    └────────┬────────────┘  │
-│  │  E-Ink HAT  │             │ HTTP :8889    │
-│  │  1872×1404  │             ▼               │
-│  └─────────────┘    ┌─────────────────────┐  │
+│  ┌─────────────┐    │  - Live preview       │  │
+│  │  E-Ink HAT  │    └────────┬────────────┘  │
+│  │  1872×1404  │             │ HTTPS :8889   │
+│  └─────────────┘             ▼               │
+│                      ┌─────────────────────┐  │
 │                      │  LAN (QR + IP:port) │  │
 │                      └─────────────────────┘  │
 └─────────────────────────────────────────────┘
 ```
 
-The app calls the C IT8951 binary (`it8951 --image <png>`) to render each frame.
-Python (PIL) composes the calendar layout to a PNG, then the C driver displays it
-with the optimized overlapped-A2-clear + 4bpp pipeline (~4s per full refresh).
+The app calls the C IT8951 binary to render each frame. Python (PIL) composes
+the calendar layout to a PNG, then the C driver displays it. Regional
+differential updates compare the new image against the last displayed image
+and only refresh the changed area — small updates (e.g. time-line movement)
+take ~2s instead of ~5s for a full refresh.
 
 ## Setup
 
@@ -82,17 +91,40 @@ select calendars, and choose a view mode.
 
 ## Configuration
 
-All settings are stored in `config/settings.json` and editable via the web UI:
+All settings are stored in `config/settings.json` and editable via the web UI
+at `https://<pi-ip>:8889/settings`:
 
-| Setting | Options | Default |
-|---------|---------|---------|
-| View mode | `month`, `week`, `7days` | `week` |
-| Day start | `HH:MM` | `07:00` |
-| Day end | `HH:MM` | `23:00` |
-| Max full-day events | 1–3 | 3 |
-| Selected calendars | from Google account | all |
-| Update interval (time line) | minutes | 15 |
-| Event poll interval | seconds | 60 |
+| Setting | Options | Default | Description |
+|---------|---------|---------|-------------|
+| View mode | `month`, `35days`, `week`, `7days` | `week` | Calendar layout |
+| Day start | `HH:MM` | `07:00` | Start of displayed time range |
+| Day end | `HH:MM` | `23:00` | End of displayed time range |
+| Time format | `24h`, `12h` | `24h` | Hour label format |
+| Date format | 13 options | Default | Page title date format |
+| Max full-day events | 0 (hide), 1, 2, 3 | 3 | Full-day events per day |
+| Smooth update interval | 1, 5, 10, 15, 30, 60 min | 15 | Time-line refresh interval |
+| Full refresh interval | Never, 30m, 1h, 1.5h, 2h, 3h, 6h, 12h, 24h | 6h | Forces full screen refresh to clear ghosting |
+| Event poll interval | seconds | 60 | How often to check for event changes |
+| Brightness | 0.1 – 2.0 | 1.0 | Gamma boost for e-ink contrast |
+| Text size modifier | -8 to +8 | 0 | Global font size adjustment |
+| Timezone | IANA name or UTC offset | auto | Timezone for event display |
+| Dim past events | on/off | off | Dim past days and ended events |
+| Crossed event dim | on/off | off | Dim events when time line crosses them |
+| Selected calendars | from Google account | all | Which calendars to display |
+
+## Web Endpoints
+
+| URL | Description |
+|-----|-------------|
+| `/settings` | Settings page (configure everything) |
+| `/preview` | Live preview of the e-ink display (auto-refreshes every 15s) |
+| `/image` | Last rendered e-ink image (PNG) |
+| `/api/render` | Trigger a manual render |
+| `/api/status` | System status JSON |
+| `/health` | Health check |
+| `/auth/start` | Start Google OAuth flow |
+| `/auth/exchange` | Exchange OAuth code for tokens |
+| `/auth/logout` | Disconnect Google account |
 
 ## License
 

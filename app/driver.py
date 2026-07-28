@@ -50,12 +50,12 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
         logger.info("Full refresh (forced)")
     elif _use_diff and smooth:
-        # Smooth: A2 1-bit mode for time-line (no flash, but B&W only)
+        # Smooth: A2 1-bit mode for time-line (no flash, B&W only)
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--smooth", "--border-smooth", "20"]
     elif _use_diff:
-        # Soft: GC16 for event changes (preserves grayscale, slight flash)
+        # Soft: GC16 for event changes (preserves grayscale)
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--soft", "--border-smooth", "20"]

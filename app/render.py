@@ -645,7 +645,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         for info in sorted(draw_infos, key=lambda e: -e[4]):
             ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min = info
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
-            is_past = dim_past_events and d < today
+            is_past = dim_past_events and (d < today or (d == today and e_min <= now_min_total))
             if is_crossed:
                 box_fill, box_outline = WHITE, GRAY_DIM
             elif is_past:
@@ -683,7 +683,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     overlap_ranges.append((o_top, o_bot))
 
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
-            is_past = dim_past_events and d < today
+            is_past = dim_past_events and (d < today or (d == today and e_min <= now_min_total))
             text_fill = GRAY_MID if (is_crossed or is_past) else BLACK
 
             y = ey_top + 4
@@ -880,13 +880,16 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
 
     y = grid_y + (now_min - ds_min) * minute_h
 
-    # White outline (1px above and below the black line)
-    draw.line([(x_start, y - 3), (x_end, y - 3)], fill=WHITE, width=1)
-    draw.line([(x_start, y + 4), (x_end, y + 4)], fill=WHITE, width=1)
+    # White outline (dotted, 1px above and below the black line)
+    for dx in range(int(x_start), int(x_end), 8):
+        draw.line([(dx, y - 3), (min(dx + 4, x_end), y - 3)], fill=WHITE, width=1)
+        draw.line([(dx, y + 4), (min(dx + 4, x_end), y + 4)], fill=WHITE, width=1)
 
-    # 2px black line
-    draw.line([(x_start, y - 1), (x_end, y - 1)], fill=BLACK, width=2)
-    draw.line([(x_start, y + 1), (x_end, y + 1)], fill=BLACK, width=2)
+    # Dotted black line (2px)
+    for dx in range(int(x_start), int(x_end), 6):
+        x2 = min(dx + 3, x_end)
+        draw.line([(dx, y - 1), (x2, y - 1)], fill=BLACK, width=2)
+        draw.line([(dx, y + 1), (x2, y + 1)], fill=BLACK, width=2)
 
     # Small time label at the right edge of the line
     time_str = now.strftime("%H:%M")

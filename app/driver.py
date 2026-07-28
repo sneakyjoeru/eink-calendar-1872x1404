@@ -55,10 +55,26 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
         logger.info("Full screen refresh (forced)")
     elif smooth:
-        # Smooth minute update: always A2 (no blink) regardless of mode
-        cmd = [binary, "--image", str(tmp_path),
-               "--brightness", str(brightness),
-               "--soft", "--border-smooth", str(border_px)]
+        # Smooth minute update: respect update_mode
+        if update_mode == "hard":
+            # Hard regional: GL16 with white flash in changed area
+            cmd = [binary, "--image", str(tmp_path),
+                   "--brightness", str(brightness),
+                   "--hard", "--border-smooth", str(border_px)]
+        elif update_mode == "fullscreen":
+            # Fullscreen: GC16 full screen (delete diff cache)
+            import os
+            try:
+                os.remove("/tmp/it8951_last.png")
+            except OSError:
+                pass
+            cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
+            logger.info("Fullscreen refresh (smooth+fullscreen mode)")
+        else:
+            # Smooth regional: A2, no blink
+            cmd = [binary, "--image", str(tmp_path),
+                   "--brightness", str(brightness),
+                   "--soft", "--border-smooth", str(border_px)]
     elif _use_diff and update_mode == "hard":
         # Hard regional: GL16 with white flash in changed area only
         cmd = [binary, "--image", str(tmp_path),

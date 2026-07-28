@@ -214,7 +214,7 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                      force_full=force_full,
-                                     update_mode=settings.get("update_mode", "soft"),
+                                     update_mode=settings.get("update_mode", "smooth"),
                                      dither_border_mm=settings.get("dither_border_mm", 5))
         if ok:
             _last_render_duration = time.time() - _render_start
@@ -348,7 +348,7 @@ def background_loop():
 
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                             smooth=True,
-                                            update_mode=settings.get("update_mode", "soft"),
+                                            update_mode=settings.get("update_mode", "smooth"),
                                             dither_border_mm=settings.get("dither_border_mm", 5))
                     _last_time_line_render = time.time()
                     logger.info("Smooth update (1-min): prepared in %.1fs, landed at :%02d.%01d",
@@ -406,7 +406,7 @@ def background_loop():
                     display_start = time.time()
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                             smooth=True,
-                                            update_mode=settings.get("update_mode", "soft"),
+                                            update_mode=settings.get("update_mode", "smooth"),
                                             dither_border_mm=settings.get("dither_border_mm", 5))
                     _last_time_line_render = time.time()
                     display_time = _last_time_line_render - display_start
@@ -592,9 +592,10 @@ async def settings_page(request: Request):
         sel_fr_6='selected' if s.get('full_refresh_interval_hours', 6)==6 else '',
         sel_fr_12='selected' if s.get('full_refresh_interval_hours', 6)==12 else '',
         sel_fr_24='selected' if s.get('full_refresh_interval_hours', 6)==24 else '',
-        um=s.get('update_mode', 'soft'),
-        sel_um_soft='selected' if s.get('update_mode', 'soft')=='soft' else '',
-        sel_um_hard='selected' if s.get('update_mode', 'soft')=='hard' else '',
+        um=s.get('update_mode', 'smooth'),
+        sel_um_smooth='selected' if s.get('update_mode', 'smooth')=='smooth' else '',
+        sel_um_hard='selected' if s.get('update_mode', 'smooth')=='hard' else '',
+        sel_um_fullscreen='selected' if s.get('update_mode', 'smooth')=='fullscreen' else '',
         db_mm=s.get('dither_border_mm', 5),
         sel_db_0='selected' if s.get('dither_border_mm', 5)==0 else '',
         sel_db_2='selected' if s.get('dither_border_mm', 5)==2 else '',
@@ -658,7 +659,7 @@ async def update_settings(request: Request):
         "time_line_interval_min": int(fd.get("time_line_interval_min", 15)),
         "event_poll_interval_sec": int(fd.get("event_poll_interval_sec", 60)),
         "full_refresh_interval_hours": float(fd.get("full_refresh_interval_hours", 6)),
-        "update_mode": fd.get("update_mode", "soft"),
+        "update_mode": fd.get("update_mode", "smooth"),
         "dither_border_mm": float(fd.get("dither_border_mm", 5)),
         "brightness": float(fd.get("brightness", 1.4)),
         "timezone": fd.get("timezone", ""),
@@ -684,12 +685,10 @@ async def trigger_render():
 
 
 def _safe_render():
-    """Call do_render with full exception logging. Respects update_mode setting."""
-    s = settings_store.load()
-    force_full = s.get("update_mode", "soft") == "hard"
-    logger.info("Manual render triggered (force_full=%s)", force_full)
+    """Call do_render with full exception logging. Save & Render always does full hard refresh."""
+    logger.info("Manual render triggered (full hard refresh)")
     try:
-        ok = do_render(force=True, force_full=force_full)
+        ok = do_render(force=True, force_full=True)
         logger.info("Manual render completed: %s", ok)
     except Exception as e:
         logger.error("Manual render failed: %s", e)
@@ -1054,8 +1053,9 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
     <div class="row">
       <div><label>Update Mode
         <select name="update_mode">
-          <option value="soft" {sel_um_soft}>Soft (regional diff, slight flash)</option>
-          <option value="hard" {sel_um_hard}>Hard (full screen, clean refresh)</option>
+          <option value="smooth" {sel_um_smooth}>Smooth regional (A2, no blink, B&W)</option>
+          <option value="hard" {sel_um_hard}>Hard regional (GL16, flash in changed area)</option>
+          <option value="fullscreen" {sel_um_fullscreen}>Hard fullscreen (GC16, full clean refresh)</option>
         </select>
       </label></div>
       <div><label>Dithering Border

@@ -15,7 +15,7 @@ _DEFAULTS = {
     "time_line_interval_min": 15, # minutes between time-line updates
     "event_poll_interval_sec": 60,# seconds between event polls
     "full_refresh_interval_hours": 6, # hours between forced full refreshes (0 = never, only day change)
-    "update_mode": "soft",        # "hard" (full screen GC16) or "soft" (regional diff GC16)
+    "update_mode": "smooth",      # "smooth" (A2 regional, no blink), "hard" (GL16 regional, flash), "fullscreen" (GC16 full screen, full clean)
     "dither_border_mm": 5,        # dithering border in mm (0 = no dithering, converted to px at ~11.85 px/mm)
     "brightness": 1.4,            # gamma boost for e-ink
     "timezone": "",               # IANA timezone, empty = system default

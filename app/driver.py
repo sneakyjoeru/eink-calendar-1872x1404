@@ -45,17 +45,27 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     # Convert mm to px for border-smooth
     border_px = int(dither_border_mm * PX_PER_MM) if dither_border_mm > 0 else 0
 
-    # Full refresh: delete diff cache so driver does full screen
-    if force_full or update_mode == "hard":
+    # Full refresh (fullscreen mode, day change, interval, or Save & Render)
+    if force_full:
         import os
         try:
             os.remove("/tmp/it8951_last.png")
         except OSError:
             pass
         cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
-        logger.info("Full refresh (forced=%s, mode=%s)", force_full, update_mode)
+        logger.info("Full screen refresh (forced)")
+    elif smooth:
+        # Smooth minute update: always A2 (no blink) regardless of mode
+        cmd = [binary, "--image", str(tmp_path),
+               "--brightness", str(brightness),
+               "--soft", "--border-smooth", str(border_px)]
+    elif _use_diff and update_mode == "hard":
+        # Hard regional: GL16 with white flash in changed area only
+        cmd = [binary, "--image", str(tmp_path),
+               "--brightness", str(brightness),
+               "--hard", "--border-smooth", str(border_px)]
     elif _use_diff:
-        # Soft: regional diff with GC16 + border dithering
+        # Smooth regional: A2, no blink
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--soft", "--border-smooth", str(border_px)]

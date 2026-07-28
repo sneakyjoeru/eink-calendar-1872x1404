@@ -56,11 +56,17 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         logger.info("Full screen refresh (forced)")
     elif smooth:
         # Smooth minute update: respect update_mode
+        # Hard mode: smaller border (GL16 handles transitions cleanly)
+        # Smooth mode: full dithering border
         if update_mode == "hard":
-            # Hard regional: GL16 with white flash in changed area
+            smooth_border = min(border_px, 24)  # cap at ~2mm for hard flash
+        else:
+            smooth_border = border_px
+        if update_mode == "hard":
+            # Hard regional: GL16 with white flash in changed area (small border)
             cmd = [binary, "--image", str(tmp_path),
                    "--brightness", str(brightness),
-                   "--hard", "--border-smooth", str(border_px)]
+                   "--hard", "--border-smooth", str(smooth_border)]
         elif update_mode == "fullscreen":
             # Fullscreen: GC16 full screen (delete diff cache)
             import os
@@ -94,6 +100,10 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         if result.returncode != 0:
             logger.error("IT8951 driver error: %s", result.stderr[-500:])
             return False
+        if result.stdout:
+            for line in result.stdout.strip().splitlines():
+                if line.startswith("diff:"):
+                    logger.info("Driver: %s", line)
         _last_render_time = time.time()
         if force_full or _last_full_refresh == 0.0:
             _last_full_refresh = _last_render_time

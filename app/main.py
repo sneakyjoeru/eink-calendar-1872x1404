@@ -999,6 +999,7 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 h1 {{ font-size: 1.5em; margin-bottom: 20px; text-align: center; }}
 .settings-grid {{ display: grid; grid-template-columns: 1fr; gap: 16px; }}
 @media (min-width: 700px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr; }} }}
+@media (min-width: 1000px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr 1fr; }} }}
 .card {{ background: #16213e; border-radius: 12px; padding: 20px; }}
 .card h2 {{ font-size: 1.1em; margin-bottom: 12px; color: #e94560; }}
 .card h3 {{ font-size: 0.85em; margin: 14px 0 8px; color: #888; text-transform: uppercase; letter-spacing: 1px; }}
@@ -1033,50 +1034,15 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 {saved_html}
 
 <form id="settingsForm" action="/api/settings" method="POST">
-<div class="row" style="margin-bottom:16px;flex-wrap:wrap">
-  <div class="card" style="flex:1;min-width:280px">
-    <h2>Google Account</h2>
-    {auth_section}
-  </div>
-  <div class="card" style="flex:1;min-width:280px">
-    <h2>⏱ Display</h2>
-    <div class="row">
-      <div><label>Brightness
-        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}">
-        <div class="note" style="text-align:center">{brightness}</div>
-      </label></div>
-      <div><label>Text Size
-        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px">
-        <div class="note">+ larger, − smaller</div>
-      </label></div>
-    </div>
-    <div class="row">
-      <div><label>Update Mode
-        <select name="update_mode">
-          <option value="smooth" {sel_um_smooth}>Smooth regional (A2, no blink, B&W)</option>
-          <option value="hard" {sel_um_hard}>Hard regional (GL16, flash in changed area)</option>
-          <option value="fullscreen" {sel_um_fullscreen}>Hard fullscreen (GC16, full clean refresh)</option>
-        </select>
-      </label></div>
-      <div><label>Dithering Border
-        <select name="dither_border_mm">
-          <option value="0" {sel_db_0}>None</option>
-          <option value="2" {sel_db_2}>2 mm (~24 px)</option>
-          <option value="5" {sel_db_5}>5 mm (~59 px)</option>
-          <option value="10" {sel_db_10}>10 mm (~119 px)</option>
-          <option value="15" {sel_db_15}>15 mm (~178 px)</option>
-          <option value="20" {sel_db_20}>20 mm (~237 px)</option>
-        </select>
-        <div class="note">Smooths edges of regional updates</div>
-      </label></div>
-    </div>
-    <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:8px">🖼 Preview Display</a>
-  </div>
+<div class="card" style="margin-bottom:16px">
+  <h2>🔐 Google Account</h2>
+  {auth_section}
 </div>
 
 <div class="settings-grid">
   <div class="card">
-    <h2>📐 Layout</h2>
+    <h2>📅 Calendar &amp; Events</h2>
+    <h3>View</h3>
     <label>View Mode
       <select name="view_mode">
         <option value="month" {sel_month}>Month</option>
@@ -1085,67 +1051,6 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <option value="7days" {sel_7days}>7 Days (from today)</option>
       </select>
     </label>
-    <div class="row">
-      <div><label>Day Start <input type="time" name="day_start" value="{day_start}"></label></div>
-      <div><label>Day End <input type="time" name="day_end" value="{day_end}"></label></div>
-    </div>
-    <div class="row">
-      <div><label>Time Format
-        <select name="time_format">
-          <option value="24h" {sel_24h}>24-hour (07:00)</option>
-          <option value="12h" {sel_12h}>12-hour (7:00 AM)</option>
-        </select>
-      </label></div>
-      <div><label>Date Format
-        <select name="date_format">
-          <option value="" {sel_df_empty}>Default</option>
-          <option value="%Y-%m-%d" {sel_Y_m_d}>2026-07-26</option>
-          <option value="%Y.%m.%d %a" {sel_df_Ymd_a}>2026.07.26 Sun</option>
-          <option value="%d %b %Y" {sel_d_b_Y}>26 Jul 2026</option>
-          <option value="%d %B %Y" {sel_df_d_B_Y}>26 July 2026</option>
-          <option value="%d.%m.%Y" {sel_d_m_Y}>26.07.2026</option>
-          <option value="%m/%d/%Y" {sel_m_d_Y}>07/26/2026</option>
-          <option value="%b %d, %Y" {sel_b_d_Y}>Jul 26, 2026</option>
-          <option value="%B %Y" {sel_df_B_Y}>July 2026</option>
-          <option value="%B %d, %Y" {sel_df_B_d_Y}>July 26, 2026</option>
-          <option value="%a %b %d" {sel_a_b_d}>Sun Jul 26</option>
-          <option value="%A, %B %d" {sel_AB_d}>Sunday, July 26</option>
-          <option value="%A, %B %d, %Y" {sel_AB_d_Y}>Sunday, July 26, 2026</option>
-        </select>
-      </label></div>
-    </div>
-    <label>Smooth Update Interval
-      <select name="time_line_interval_min">
-        <option value="1" {sel_tl_1}>1 min</option>
-        <option value="5" {sel_tl_5}>5 min</option>
-        <option value="10" {sel_tl_10}>10 min</option>
-        <option value="15" {sel_tl_15}>15 min</option>
-        <option value="30" {sel_tl_30}>30 min</option>
-        <option value="60" {sel_tl_60}>60 min</option>
-      </select>
-    </label>
-    <label>Full Refresh Interval
-      <select name="full_refresh_interval_hours">
-        <option value="0" {sel_fr_0}>Never (only on day change)</option>
-        <option value="0.5" {sel_fr_0_5}>Every 30 min</option>
-        <option value="1" {sel_fr_1}>Every 1 hour</option>
-        <option value="1.5" {sel_fr_1_5}>Every 1.5 hours</option>
-        <option value="2" {sel_fr_2}>Every 2 hours</option>
-        <option value="3" {sel_fr_3}>Every 3 hours</option>
-        <option value="6" {sel_fr_6}>Every 6 hours</option>
-        <option value="12" {sel_fr_12}>Every 12 hours</option>
-        <option value="24" {sel_fr_24}>Every 24 hours</option>
-      </select>
-      <div class="note">Forces full-screen refresh to clear ghosting</div>
-    </label>
-    <label>Timezone
-      <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP">
-      <div class="note">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3)</div>
-    </label>
-  </div>
-
-  <div class="card">
-    <h2>📅 Events</h2>
     <label>Max Full-Day Events
       <select name="max_full_day_events">
         <option value="0" {sel_fd_0}>0 (hide)</option>
@@ -1154,6 +1059,13 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <option value="3" {sel_fd_3}>3</option>
       </select>
     </label>
+    <h3>Calendars</h3>
+    <div class="cal-grid">
+    {cal_checkboxes}
+    </div>
+    {cal_error}
+    <p style="font-size:0.75em;color:#666;margin-top:8px;">Empty selection = all calendars</p>
+    <h3>Event Updates</h3>
     <label>Event Poll Interval
       <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
       <div class="note">How often to check for new events (seconds)</div>
@@ -1170,12 +1082,99 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
   </div>
 
   <div class="card">
-    <h2>Calendars</h2>
-    <div class="cal-grid">
-    {cal_checkboxes}
+    <h2>🕐 Time &amp; Date</h2>
+    <div class="row">
+      <div><label>Day Start <input type="time" name="day_start" value="{day_start}"></label></div>
+      <div><label>Day End <input type="time" name="day_end" value="{day_end}"></label></div>
     </div>
-    {cal_error}
-    <p style="font-size:0.75em;color:#666;margin-top:8px;">Empty selection = all calendars</p>
+    <label>Time Format
+      <select name="time_format">
+        <option value="24h" {sel_24h}>24-hour (07:00)</option>
+        <option value="12h" {sel_12h}>12-hour (7:00 AM)</option>
+      </select>
+    </label>
+    <label>Date Format
+      <select name="date_format">
+        <option value="" {sel_df_empty}>Default</option>
+        <option value="%Y-%m-%d" {sel_Y_m_d}>2026-07-26</option>
+        <option value="%Y.%m.%d %a" {sel_df_Ymd_a}>2026.07.26 Sun</option>
+        <option value="%d %b %Y" {sel_d_b_Y}>26 Jul 2026</option>
+        <option value="%d %B %Y" {sel_df_d_B_Y}>26 July 2026</option>
+        <option value="%d.%m.%Y" {sel_d_m_Y}>26.07.2026</option>
+        <option value="%m/%d/%Y" {sel_m_d_Y}>07/26/2026</option>
+        <option value="%b %d, %Y" {sel_b_d_Y}>Jul 26, 2026</option>
+        <option value="%B %Y" {sel_df_B_Y}>July 2026</option>
+        <option value="%B %d, %Y" {sel_df_B_d_Y}>July 26, 2026</option>
+        <option value="%a %b %d" {sel_a_b_d}>Sun Jul 26</option>
+        <option value="%A, %B %d" {sel_AB_d}>Sunday, July 26</option>
+        <option value="%A, %B %d, %Y" {sel_AB_d_Y}>Sunday, July 26, 2026</option>
+      </select>
+    </label>
+    <label>Timezone
+      <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP">
+      <div class="note">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3)</div>
+    </label>
+    <label>Smooth Update Interval
+      <select name="time_line_interval_min">
+        <option value="1" {sel_tl_1}>1 min</option>
+        <option value="5" {sel_tl_5}>5 min</option>
+        <option value="10" {sel_tl_10}>10 min</option>
+        <option value="15" {sel_tl_15}>15 min</option>
+        <option value="30" {sel_tl_30}>30 min</option>
+        <option value="60" {sel_tl_60}>60 min</option>
+      </select>
+      <div class="note">Time-line update frequency (week &amp; 7-day views)</div>
+    </label>
+  </div>
+
+  <div class="card">
+    <h2>🖥 Display &amp; Refresh</h2>
+    <h3>Appearance</h3>
+    <div class="row">
+      <div><label>Brightness
+        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}">
+        <div class="note" style="text-align:center">{brightness}</div>
+      </label></div>
+      <div><label>Text Size
+        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px">
+        <div class="note">+ larger, − smaller</div>
+      </label></div>
+    </div>
+    <h3>Regional Updates</h3>
+    <label>Update Mode
+      <select name="update_mode">
+        <option value="smooth" {sel_um_smooth}>Smooth (GL16, no flash, dithered)</option>
+        <option value="hard" {sel_um_hard}>Hard (flash inner + GL16 dither)</option>
+        <option value="fullscreen" {sel_um_fullscreen}>Fullscreen (GC16, full clean)</option>
+      </select>
+      <div class="note">Smooth: no blink, dithering visible. Hard: flash changed area. Fullscreen: clean refresh.</div>
+    </label>
+    <label>Dithering Border
+      <select name="dither_border_mm">
+        <option value="0" {sel_db_0}>None</option>
+        <option value="2" {sel_db_2}>2 mm (~24 px)</option>
+        <option value="5" {sel_db_5}>5 mm (~59 px)</option>
+        <option value="10" {sel_db_10}>10 mm (~119 px)</option>
+        <option value="15" {sel_db_15}>15 mm (~178 px)</option>
+        <option value="20" {sel_db_20}>20 mm (~237 px)</option>
+      </select>
+      <div class="note">Blends old→new content with dithering — maximal noise near refresh, fading to sparse dots at the edge</div>
+    </label>
+    <label>Full Refresh Interval
+      <select name="full_refresh_interval_hours">
+        <option value="0" {sel_fr_0}>Never (only on day change)</option>
+        <option value="0.5" {sel_fr_0_5}>Every 30 min</option>
+        <option value="1" {sel_fr_1}>Every 1 hour</option>
+        <option value="1.5" {sel_fr_1_5}>Every 1.5 hours</option>
+        <option value="2" {sel_fr_2}>Every 2 hours</option>
+        <option value="3" {sel_fr_3}>Every 3 hours</option>
+        <option value="6" {sel_fr_6}>Every 6 hours</option>
+        <option value="12" {sel_fr_12}>Every 12 hours</option>
+        <option value="24" {sel_fr_24}>Every 24 hours</option>
+      </select>
+      <div class="note">Forces full-screen refresh to clear ghosting</div>
+    </label>
+    <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:8px">🖼 Preview Display</a>
   </div>
 </div>
 

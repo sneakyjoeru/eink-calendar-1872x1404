@@ -3,6 +3,10 @@
 Renders a PIL image to PNG, then calls the C driver to display it.
 Supports regional differential updates (--soft/--hard) that compare
 against the last displayed image and only refresh changed regions.
+The C driver applies Floyd-Steinberg dithering in the border zone,
+blending from old pixels (outer edge, sparse dots) to new pixels
+(inner edge, maximal noise) — the dithering is adjustable via the
+dither_border_mm setting.
 """
 import logging
 import os
@@ -28,8 +32,13 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                       dither_border_mm: float = 5) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
-    update_mode: "hard" (full screen, no diff) or "soft" (regional diff GC16)
-    dither_border_mm: dithering border in mm (converted to px at ~11.85 px/mm)
+    update_mode: "hard" (flash inner changed area + GL16 dithered border),
+                 "soft" (GL16 regional, no flash, dithering visible), or
+                 "fullscreen" (GC16 full screen, full clean refresh)
+    dither_border_mm: dithering border in mm — blends old→new content with
+                      Floyd-Steinberg dithering (maximal noise near the refresh
+                      region, fading to sparse dots at the outer edge).
+                      Converted to px at ~11.85 px/mm.
     """
     global _last_render_time, _last_full_refresh
     import time
@@ -56,14 +65,14 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         logger.info("Full screen refresh (forced)")
     elif smooth:
         # Smooth minute update: respect update_mode
-        # Hard mode: smaller border (GL16 handles transitions cleanly)
-        # Smooth mode: full dithering border
+        # Hard mode: flash inner changed area + GL16 border dither (small border)
+        # Soft mode: GL16 regional, no flash — dithering visible in border zone
         if update_mode == "hard":
             smooth_border = min(border_px, 24)  # cap at ~2mm for hard flash
         else:
             smooth_border = border_px
         if update_mode == "hard":
-            # Hard regional: GL16 with white flash in changed area (small border)
+            # Hard regional: flash inner changed area + GL16 dithered border
             cmd = [binary, "--image", str(tmp_path),
                    "--brightness", str(brightness),
                    "--hard", "--border-smooth", str(smooth_border)]
@@ -77,17 +86,17 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
             cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
             logger.info("Fullscreen refresh (smooth+fullscreen mode)")
         else:
-            # Smooth regional: A2, no blink
+            # Soft regional: GL16, no blink — dithering visible in border zone
             cmd = [binary, "--image", str(tmp_path),
                    "--brightness", str(brightness),
                    "--soft", "--border-smooth", str(border_px)]
     elif _use_diff and update_mode == "hard":
-        # Hard regional: GL16 with white flash in changed area only
+        # Hard regional: flash inner changed area + GL16 dithered border
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--hard", "--border-smooth", str(border_px)]
     elif _use_diff:
-        # Smooth regional: A2, no blink
+        # Soft regional: GL16, no blink — dithering visible in border zone
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--soft", "--border-smooth", str(border_px)]

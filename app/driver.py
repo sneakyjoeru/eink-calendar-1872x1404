@@ -39,6 +39,12 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                       Floyd-Steinberg dithering (maximal noise near the refresh
                       region, fading to sparse dots at the outer edge).
                       Converted to px at ~11.85 px/mm.
+
+    force_full: full screen GC16 refresh. Uses --hard with a deleted diff cache
+                so the C driver does a clean full GL16 refresh AND saves the
+                cache — preserving it for the next regional update's dithering.
+                (Bare --image never saves the cache, so the next regional update
+                would find no previous image and flash the whole screen again.)
     """
     global _last_render_time, _last_full_refresh
     import time
@@ -55,14 +61,21 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     border_px = int(dither_border_mm * PX_PER_MM) if dither_border_mm > 0 else 0
 
     # Full refresh (fullscreen mode, day change, interval, or Save & Render)
+    # Use --hard with a deleted diff cache: the C driver's diff path finds no
+    # previous image → does a full GL16 refresh AND saves the cache. This
+    # preserves the cache for the next regional update (with dithering).
+    # Bare --image never saves the cache, so the next regional update would
+    # find no previous image and flash the whole screen again.
     if force_full:
         import os
         try:
             os.remove("/tmp/it8951_last.png")
         except OSError:
             pass
-        cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
-        logger.info("Full screen refresh (forced)")
+        cmd = [binary, "--image", str(tmp_path),
+               "--brightness", str(brightness),
+               "--hard", "--border-smooth", "0"]
+        logger.info("Full screen refresh (forced, cache-preserving)")
     elif smooth:
         # Smooth minute update: respect update_mode
         # Hard mode: flash inner changed area + GL16 border dither (small border)
@@ -77,13 +90,16 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                    "--brightness", str(brightness),
                    "--hard", "--border-smooth", str(smooth_border)]
         elif update_mode == "fullscreen":
-            # Fullscreen: GC16 full screen (delete diff cache)
+            # Fullscreen: GC16 full screen — use --hard with deleted cache so
+            # the C driver saves the diff cache for the next regional update.
             import os
             try:
                 os.remove("/tmp/it8951_last.png")
             except OSError:
                 pass
-            cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
+            cmd = [binary, "--image", str(tmp_path),
+                   "--brightness", str(brightness),
+                   "--hard", "--border-smooth", "0"]
             logger.info("Fullscreen refresh (smooth+fullscreen mode)")
         else:
             # Soft regional: GL16, no blink — dithering visible in border zone

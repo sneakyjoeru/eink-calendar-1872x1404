@@ -330,8 +330,8 @@ def background_loop():
                             time_format=settings.get("time_format", "24h"),
                             date_format=settings.get("date_format", ""),
                             settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
-                            crossed_event_dim=False,
-                            dim_past_events=False,
+                            crossed_event_dim=settings.get("crossed_event_dim", False),
+                            dim_past_events=settings.get("dim_past_events", False),
                             text_size_modifier=settings.get("text_size_modifier", 0),
                             now=target_now,
                         )
@@ -387,8 +387,8 @@ def background_loop():
                             time_format=settings.get("time_format", "24h"),
                             date_format=settings.get("date_format", ""),
                             settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
-                            crossed_event_dim=False,
-                            dim_past_events=False,
+                            crossed_event_dim=settings.get("crossed_event_dim", False),
+                            dim_past_events=settings.get("dim_past_events", False),
                             text_size_modifier=settings.get("text_size_modifier", 0),
                             now=target_now,
                         )

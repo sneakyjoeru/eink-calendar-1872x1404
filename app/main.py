@@ -191,6 +191,14 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
             logger.info("Day changed (%s → %s), forcing full refresh", _last_render_date, today_str)
         _last_render_date = today_str
 
+        # Event add/remove (an event ended/started/disappeared) — force a full
+        # clean refresh so the whole calendar is rebuilt without ghosting.
+        # This is the "event finish" trigger: regional updates handle in-view
+        # time-line movement, but event-set changes get a full refresh.
+        if not force_full and events_changed:
+            force_full = True
+            logger.info("Events changed, forcing full refresh (event finish)")
+
         # Check full refresh interval setting
         if not force_full:
             full_interval = settings.get("full_refresh_interval_hours", 0)
@@ -347,11 +355,11 @@ def background_loop():
                         time.sleep(sleep_sec)
 
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
-                                            smooth=True,
-                                            update_mode=settings.get("update_mode", "smooth"),
+                                            force_full=False,
+                                            update_mode=settings.get("update_mode", "soft"),
                                             dither_border_mm=settings.get("dither_border_mm", 5))
                     _last_time_line_render = time.time()
-                    logger.info("Smooth update (1-min): prepared in %.1fs, landed at :%02d.%01d",
+                    logger.info("Time-line regional update (1-min): prepared in %.1fs, landed at :%02d.%01d",
                                 prepare_time,
                                 int(datetime.datetime.now().second),
                                 int(datetime.datetime.now().microsecond / 100000))
@@ -405,12 +413,12 @@ def background_loop():
 
                     display_start = time.time()
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
-                                            smooth=True,
-                                            update_mode=settings.get("update_mode", "smooth"),
+                                            force_full=False,
+                                            update_mode=settings.get("update_mode", "soft"),
                                             dither_border_mm=settings.get("dither_border_mm", 5))
                     _last_time_line_render = time.time()
                     display_time = _last_time_line_render - display_start
-                    logger.info("Smooth update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
+                    logger.info("Time-line regional update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
                                 prepare_time, display_time,
                                 int(datetime.datetime.now().second),
                                 int(datetime.datetime.now().microsecond / 100000))
@@ -592,10 +600,11 @@ async def settings_page(request: Request):
         sel_fr_6='selected' if s.get('full_refresh_interval_hours', 6)==6 else '',
         sel_fr_12='selected' if s.get('full_refresh_interval_hours', 6)==12 else '',
         sel_fr_24='selected' if s.get('full_refresh_interval_hours', 6)==24 else '',
-        um=s.get('update_mode', 'smooth'),
-        sel_um_smooth='selected' if s.get('update_mode', 'smooth')=='smooth' else '',
-        sel_um_hard='selected' if s.get('update_mode', 'smooth')=='hard' else '',
-        sel_um_fullscreen='selected' if s.get('update_mode', 'smooth')=='fullscreen' else '',
+        um=s.get('update_mode', 'soft'),
+        sel_um_smooth='selected' if s.get('update_mode', 'soft')=='soft' else '',
+        sel_um_hard='selected' if s.get('update_mode', 'soft')=='hard' else '',
+        sel_um_smooth_a2='selected' if s.get('update_mode', 'soft')=='smooth' else '',
+        sel_um_fullscreen='selected' if s.get('update_mode', 'soft')=='fullscreen' else '',
         db_mm=s.get('dither_border_mm', 5),
         sel_db_0='selected' if s.get('dither_border_mm', 5)==0 else '',
         sel_db_2='selected' if s.get('dither_border_mm', 5)==2 else '',
@@ -994,43 +1003,63 @@ _SETTINGS_HTML = """<!DOCTYPE html>
 <title>E-Ink Calendar Settings</title>
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+:root {{
+  --bg: #14142b; --card: #1d1d3a; --card2: #232347; --input: #2a2a52;
+  --border: #343460; --accent: #e94560; --accent2: #4285F4; --text: #ececf5;
+  --muted: #8b8bb0; --ok: #4ade80; --ok-bg: #14321f; --warn: #f59e0b; --warn-bg: #3a2a10;
+}}
 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-       background: #1a1a2e; color: #eee; padding: 20px; max-width: 960px; margin: 0 auto; }}
-h1 {{ font-size: 1.5em; margin-bottom: 20px; text-align: center; }}
+       background: var(--bg); color: var(--text); padding: 20px; max-width: 960px; margin: 0 auto; line-height: 1.5; }}
+header {{ text-align: center; margin-bottom: 24px; }}
+header h1 {{ font-size: 1.6em; margin-bottom: 4px; }}
+header p {{ color: var(--muted); font-size: 0.85em; }}
 .settings-grid {{ display: grid; grid-template-columns: 1fr; gap: 16px; }}
 @media (min-width: 700px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr; }} }}
 @media (min-width: 1000px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr 1fr; }} }}
-.card {{ background: #16213e; border-radius: 12px; padding: 20px; }}
-.card h2 {{ font-size: 1.1em; margin-bottom: 12px; color: #e94560; }}
-.card h3 {{ font-size: 0.85em; margin: 14px 0 8px; color: #888; text-transform: uppercase; letter-spacing: 1px; }}
-label {{ display: block; margin-bottom: 8px; font-size: 0.9em; }}
-select, input[type="time"], input[type="number"], input[type="range"] {{
-  width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #333;
-  background: #0f3460; color: #eee; font-size: 0.9em; }}
-.btn {{ display: inline-block; padding: 10px 20px; border-radius: 8px;
-  border: none; cursor: pointer; font-size: 0.9em; text-decoration: none; text-align: center; }}
-.btn-primary {{ background: #e94560; color: white; width: 100%; margin-top: 12px; }}
-.btn-auth {{ background: #4285F4; color: white; }}
-.btn-small {{ background: #333; color: #eee; font-size: 0.8em; padding: 6px 12px; }}
-.alert {{ background: #3d2010; border: 1px solid #e94560; border-radius: 8px;
-  padding: 12px; margin-bottom: 12px; font-size: 0.85em; }}
+.card {{ background: var(--card); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }}
+.card h2 {{ font-size: 1.05em; margin-bottom: 14px; color: var(--accent); display: flex; align-items: center; gap: 8px; }}
+.card h3 {{ font-size: 0.72em; margin: 18px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600; }}
+.card h3:first-of-type {{ margin-top: 4px; }}
+.field {{ margin-bottom: 14px; }}
+.field:last-child {{ margin-bottom: 0; }}
+label {{ display: block; font-size: 0.88em; margin-bottom: 6px; font-weight: 500; }}
+select, input[type="time"], input[type="number"], input[type="text"] {{
+  width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--input); color: var(--text); font-size: 0.92em; }}
+select:focus, input:focus {{ outline: none; border-color: var(--accent); }}
+input[type="range"] {{ width: 100%; }}
+.btn {{ display: inline-block; padding: 11px 22px; border-radius: 10px;
+  border: none; cursor: pointer; font-size: 0.92em; text-decoration: none; text-align: center; font-weight: 600; transition: filter .15s; }}
+.btn:hover {{ filter: brightness(1.12); }}
+.btn-primary {{ background: var(--accent); color: white; width: 100%; margin-top: 16px; font-size: 1em; padding: 13px; }}
+.btn-auth {{ background: var(--accent2); color: white; }}
+.btn-small {{ background: var(--input); color: var(--text); font-size: 0.82em; padding: 7px 14px; border: 1px solid var(--border); }}
+.alert {{ background: var(--warn-bg); border: 1px solid var(--warn); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 12px; font-size: 0.85em; }}
 .alert code {{ background: #2a1a0a; padding: 2px 6px; border-radius: 4px; }}
-.badge {{ display: inline-block; padding: 4px 10px; border-radius: 12px;
-  font-size: 0.8em; margin-right: 8px; }}
-.badge-ok {{ background: #1b4332; color: #95d5b2; }}
-.cal-item {{ display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; }}
+.badge {{ display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.78em; font-weight: 600; }}
+.badge-ok {{ background: var(--ok-bg); color: var(--ok); }}
+.cal-item {{ display: flex; align-items: center; gap: 8px; padding: 7px 0; cursor: pointer; border-radius: 6px; }}
+.cal-item:hover {{ background: var(--card2); }}
 .cal-item input {{ width: auto; }}
-.cal-dot {{ width: 14px; height: 14px; border-radius: 50%; display: inline-block; }}
-.cal-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }}
-.footer {{ text-align: center; font-size: 0.75em; color: #555; margin-top: 20px; }}
+.cal-dot {{ width: 14px; height: 14px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
+.cal-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }}
+.footer {{ text-align: center; font-size: 0.76em; color: var(--muted); margin-top: 24px; padding: 16px; }}
 .row {{ display: flex; gap: 12px; }}
 .row > div {{ flex: 1; }}
-.check-row {{ display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }}
+.check-row {{ display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--input); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }}
 .check-row input {{ width: auto; }}
-.note {{ font-size: 0.75em; color: #666; margin-top: 2px; }}
+.check-row:hover {{ background: var(--card2); }}
+.note {{ font-size: 0.74em; color: var(--muted); margin-top: 4px; }}
+.range-val {{ display: inline-block; background: var(--input); padding: 2px 8px; border-radius: 6px; font-size: 0.8em; font-weight: 600; }}
+.save-bar {{ position: sticky; bottom: 0; margin: 20px -20px 0; padding: 16px 20px; background: linear-gradient(180deg, transparent, var(--bg) 30%); }}
 </style>
 </head>
 <body>
+<header>
+  <h1>📅 E-Ink Calendar</h1>
+  <p>Configure your calendar display — changes apply instantly to the screen.</p>
+</header>
 {saved_html}
 
 <form id="settingsForm" action="/api/settings" method="POST">
@@ -1042,58 +1071,65 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
 <div class="settings-grid">
   <div class="card">
     <h2>📅 Calendar &amp; Events</h2>
-    <h3>View</h3>
-    <label>View Mode
+    <h3>Layout</h3>
+    <div class="field">
+      <label>View Mode</label>
       <select name="view_mode">
-        <option value="month" {sel_month}>Month</option>
-        <option value="35days" {sel_35days}>Month (5 weeks)</option>
-        <option value="week" {sel_week}>Week</option>
+        <option value="month" {sel_month}>Month (current month)</option>
+        <option value="35days" {sel_35days}>Month (5 weeks, Mon-start)</option>
+        <option value="week" {sel_week}>Week (Mon–Sun)</option>
         <option value="7days" {sel_7days}>7 Days (from today)</option>
       </select>
-    </label>
-    <label>Max Full-Day Events
+    </div>
+    <div class="field">
+      <label>Full-day events shown per day</label>
       <select name="max_full_day_events">
-        <option value="0" {sel_fd_0}>0 (hide)</option>
+        <option value="0" {sel_fd_0}>Hide all-day events</option>
         <option value="1" {sel_fd_1}>1</option>
         <option value="2" {sel_fd_2}>2</option>
         <option value="3" {sel_fd_3}>3</option>
       </select>
-    </label>
-    <h3>Calendars</h3>
+    </div>
+    <h3>Calendars to show</h3>
     <div class="cal-grid">
     {cal_checkboxes}
     </div>
     {cal_error}
-    <p style="font-size:0.75em;color:#666;margin-top:8px;">Empty selection = all calendars</p>
-    <h3>Event Updates</h3>
-    <label>Event Poll Interval
+    <p class="note">Leave all unchecked to show every calendar.</p>
+    <h3>Checking for changes</h3>
+    <div class="field">
+      <label>Check for new events every (seconds)</label>
       <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
-      <div class="note">How often to check for new events (seconds)</div>
-    </label>
-    <h3>Visual Effects</h3>
+      <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
+    </div>
+    <h3>Look &amp; feel</h3>
     <label class="check-row">
       <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
-      <span>Dim past events &amp; days</span>
+      <span>Dim past days &amp; ended events</span>
     </label>
     <label class="check-row">
       <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
-      <span>Dim events when time line crosses</span>
+      <span>Dim an event once the time line passes it</span>
     </label>
   </div>
 
   <div class="card">
     <h2>🕐 Time &amp; Date</h2>
+    <h3>Day range</h3>
     <div class="row">
-      <div><label>Day Start <input type="time" name="day_start" value="{day_start}"></label></div>
-      <div><label>Day End <input type="time" name="day_end" value="{day_end}"></label></div>
+      <div class="field"><label>Day starts at</label><input type="time" name="day_start" value="{day_start}"></div>
+      <div class="field"><label>Day ends at</label><input type="time" name="day_end" value="{day_end}"></div>
     </div>
-    <label>Time Format
+    <h3>Formats</h3>
+    <div class="field">
+      <label>Time format</label>
       <select name="time_format">
-        <option value="24h" {sel_24h}>24-hour (07:00)</option>
-        <option value="12h" {sel_12h}>12-hour (7:00 AM)</option>
+        <option value="24h" {sel_24h}>24-hour · 07:00</option>
+        <option value="12h" {sel_12h}>12-hour · 7:00 AM</option>
       </select>
-    </label>
-    <label>Date Format
+    </div>
+    <div class="field">
+      <label>Date format (title)</label>
       <select name="date_format">
         <option value="" {sel_df_empty}>Default</option>
         <option value="%Y-%m-%d" {sel_Y_m_d}>2026-07-26</option>
@@ -1109,60 +1145,68 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <option value="%A, %B %d" {sel_AB_d}>Sunday, July 26</option>
         <option value="%A, %B %d, %Y" {sel_AB_d_Y}>Sunday, July 26, 2026</option>
       </select>
-    </label>
-    <label>Timezone
-      <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from IP">
-      <div class="note">IANA name (e.g. Europe/Moscow) or UTC offset (e.g. +3)</div>
-    </label>
-    <label>Smooth Update Interval
+    </div>
+    <div class="field">
+      <label>Timezone</label>
+      <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from your IP">
+      <div class="note">City name (e.g. Europe/Moscow) or UTC offset (e.g. +3).</div>
+    </div>
+    <h3>Live time line</h3>
+    <div class="field">
+      <label>Move the time line every</label>
       <select name="time_line_interval_min">
-        <option value="1" {sel_tl_1}>1 min</option>
-        <option value="5" {sel_tl_5}>5 min</option>
-        <option value="10" {sel_tl_10}>10 min</option>
-        <option value="15" {sel_tl_15}>15 min</option>
-        <option value="30" {sel_tl_30}>30 min</option>
-        <option value="60" {sel_tl_60}>60 min</option>
+        <option value="1" {sel_tl_1}>1 minute</option>
+        <option value="5" {sel_tl_5}>5 minutes</option>
+        <option value="10" {sel_tl_10}>10 minutes</option>
+        <option value="15" {sel_tl_15}>15 minutes</option>
+        <option value="30" {sel_tl_30}>30 minutes</option>
+        <option value="60" {sel_tl_60}>1 hour</option>
       </select>
-      <div class="note">Time-line update frequency (week &amp; 7-day views)</div>
-    </label>
+      <div class="note">Only used in Week &amp; 7-day views. Each tick is a small regional refresh.</div>
+    </div>
   </div>
 
   <div class="card">
-    <h2>🖥 Display &amp; Refresh</h2>
+    <h2>🖥 Screen &amp; Refresh</h2>
     <h3>Appearance</h3>
     <div class="row">
-      <div><label>Brightness
-        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}">
-        <div class="note" style="text-align:center">{brightness}</div>
-      </label></div>
-      <div><label>Text Size
+      <div class="field"><label>Contrast / brightness</label>
+        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}"
+               oninput="document.getElementById('brightVal').textContent=this.value">
+        <div class="note" style="text-align:center"><span class="range-val" id="brightVal">{brightness}</span></div>
+      </div>
+      <div class="field"><label>Text size</label>
         <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px">
-        <div class="note">+ larger, − smaller</div>
-      </label></div>
+        <div class="note">+ bigger, − smaller (px)</div>
+      </div>
     </div>
-    <h3>Regional Updates</h3>
-    <label>Update Mode
+    <h3>Regional updates</h3>
+    <div class="field">
+      <label>Update style for small changes (time line, etc.)</label>
       <select name="update_mode">
-        <option value="smooth" {sel_um_smooth}>Smooth (GL16, no flash, dithered)</option>
-        <option value="hard" {sel_um_hard}>Hard (flash inner + GL16 dither)</option>
-        <option value="fullscreen" {sel_um_fullscreen}>Fullscreen (GC16, full clean)</option>
+        <option value="soft" {sel_um_smooth}>Soft · no flash, smooth dithered edges (recommended)</option>
+        <option value="hard" {sel_um_hard}>Hard · brief flash of changed area, dithered edges</option>
+        <option value="smooth" {sel_um_smooth_a2}>Fast · no flash, black/white only (no dithering)</option>
+        <option value="fullscreen" {sel_um_fullscreen}>Always full-screen · clean refresh every time</option>
       </select>
-      <div class="note">Smooth: no blink, dithering visible. Hard: flash changed area. Fullscreen: clean refresh.</div>
-    </label>
-    <label>Dithering Border
+      <div class="note">Soft &amp; Hard blend old→new at the edges with dithering so the change fades in cleanly. Full-screen refreshes (below) happen automatically on day change, when events change, or on the interval.</div>
+    </div>
+    <div class="field">
+      <label>Dithering edge width</label>
       <select name="dither_border_mm">
-        <option value="0" {sel_db_0}>None</option>
-        <option value="2" {sel_db_2}>2 mm (~24 px)</option>
-        <option value="5" {sel_db_5}>5 mm (~59 px)</option>
-        <option value="10" {sel_db_10}>10 mm (~119 px)</option>
-        <option value="15" {sel_db_15}>15 mm (~178 px)</option>
-        <option value="20" {sel_db_20}>20 mm (~237 px)</option>
+        <option value="0" {sel_db_0}>None (hard edge)</option>
+        <option value="2" {sel_db_2}>2 mm · ~24 px</option>
+        <option value="5" {sel_db_5}>5 mm · ~59 px</option>
+        <option value="10" {sel_db_10}>10 mm · ~119 px</option>
+        <option value="15" {sel_db_15}>15 mm · ~178 px</option>
+        <option value="20" {sel_db_20}>20 mm · ~237 px</option>
       </select>
-      <div class="note">Blends old→new content with dithering — maximal noise near refresh, fading to sparse dots at the edge</div>
-    </label>
-    <label>Full Refresh Interval
+      <div class="note">Wider = softer, more gradual fade. Only affects the changed region's edges — untouched areas stay clean.</div>
+    </div>
+    <div class="field">
+      <label>Full-screen clean refresh</label>
       <select name="full_refresh_interval_hours">
-        <option value="0" {sel_fr_0}>Never (only on day change)</option>
+        <option value="0" {sel_fr_0}>Never (only on day / event change)</option>
         <option value="0.5" {sel_fr_0_5}>Every 30 min</option>
         <option value="1" {sel_fr_1}>Every 1 hour</option>
         <option value="1.5" {sel_fr_1_5}>Every 1.5 hours</option>
@@ -1172,18 +1216,20 @@ select, input[type="time"], input[type="number"], input[type="range"] {{
         <option value="12" {sel_fr_12}>Every 12 hours</option>
         <option value="24" {sel_fr_24}>Every 24 hours</option>
       </select>
-      <div class="note">Forces full-screen refresh to clear ghosting</div>
-    </label>
-    <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:8px">🖼 Preview Display</a>
+      <div class="note">Wipes the whole screen to clear any ghosting. Also runs automatically when events are added or removed.</div>
+    </div>
+    <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:10px">🖼 Preview the screen live</a>
   </div>
 </div>
 
-<button type="submit" class="btn btn-primary">💾 Save & Render</button>
-<p id="saveStatus"></p>
+<div class="save-bar">
+  <button type="submit" class="btn btn-primary">💾 Save &amp; Refresh screen</button>
+  <p id="saveStatus" style="text-align:center;margin-top:8px;font-size:0.85em"></p>
+</div>
 </form>
 
 <div class="footer">
-  E-Ink Calendar · {lan_ip}:{port} · 1872×1404 IT8951 by <a href="https://sneakyjoe.live/donate" style="color:#555;text-decoration:none">sneakyjoe.live</a>
+  E-Ink Calendar · {lan_ip}:{port} · 1872×1404 IT8951 · <a href="https://sneakyjoe.live/donate" style="color:inherit;text-decoration:underline">sneakyjoe.live</a>
 </div>
 
 <script>

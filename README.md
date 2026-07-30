@@ -13,7 +13,7 @@ with a live current-time indicator line.
 - 📋 **Full-day events** — display 0–3 full-day events per day, stacked vertically
 - 📍 **Current-time line** — striped line with time label, auto-updates at configurable intervals (1 min – 60 min)
 - ⚡ **ASAP event updates** — screen refreshes when events are added or removed
-- 🔄 **Regional differential updates** — only refreshes changed areas using the [IT8951 C driver](https://github.com/sneakyjoeru/it8951-epaper-c-orangepi-zero-2w) diff mode (`--soft`/`--smooth`), reducing flash and update time
+- 🔄 **Regional differential updates** — only refreshes changed areas using the [IT8951 C driver](https://github.com/sneakyjoeru/it8951-epaper-c-orangepi-zero-2w) diff mode (`--soft`/`--hard`/`--smooth`), with Floyd-Steinberg dithering at the edges so changes fade in cleanly. Full-screen refreshes only happen on day change, event add/remove, or the configured interval — never during small regional updates.
 - 🌫️ **Dim past events** — past days and ended events are dimmed (toggleable)
 - 📏 **Text size modifier** — adjust all text sizes globally (+/- pixels)
 - 🔐 **HTTPS settings server** — self-signed SSL, OAuth via `http://localhost` redirect
@@ -55,13 +55,32 @@ take ~2s instead of ~5s for a full refresh.
 
 ### Prerequisites
 
-The IT8951 C driver must be installed (see
-[it8951-epaper-c-orangepi-zero-2w](https://github.com/sneakyjoeru/it8951-epaper-c-orangepi-zero-2w)):
+The IT8951 C driver must be installed. A prebuilt aarch64 binary is bundled at
+`bin/it8951`. To build it yourself on the Orange Pi (the build needs the Pi's
+SPI/GPIO hardware headers and `libgpiod`/`libfreetype`), the full C source is in
+`bin/c-driver/`:
+
+```bash
+cd bin/c-driver
+sudo make build-pi            # builds ./it8951 (native aarch64)
+sudo make install             # copies it to /opt/eink-calendar/bin/it8951
+```
+
+See [it8951-epaper-c-orangepi-zero-2w](https://github.com/sneakyjoeru/it8951-epaper-c-orangepi-zero-2w)
+for the standalone driver repo. First-time OS setup:
 
 ```bash
 sudo ./it8951 --setup   # configures overlay + packages
 sudo reboot             # if prompted
 ```
+
+The driver's regional update modes:
+- `--soft` — GL16, no flash, 16-level dithering visible at the edges (recommended).
+- `--hard` — brief white flash of the changed area, GL16 dithered edges.
+- `--smooth` — A2 1-bit, no flash, fastest (no dithering — black/white only).
+- `--border-smooth N` — Floyd-Steinberg old→new blend border in pixels. The
+  outer edge keeps the old (clean) pixels, so repeated regional updates do not
+  darken untouched areas.
 
 ### Google OAuth credentials
 
@@ -102,8 +121,10 @@ at `https://<pi-ip>:8889/settings`:
 | Time format | `24h`, `12h` | `24h` | Hour label format |
 | Date format | 13 options | Default | Page title date format |
 | Max full-day events | 0 (hide), 1, 2, 3 | 3 | Full-day events per day |
-| Smooth update interval | 1, 5, 10, 15, 30, 60 min | 15 | Time-line refresh interval |
-| Full refresh interval | Never, 30m, 1h, 1.5h, 2h, 3h, 6h, 12h, 24h | 6h | Forces full screen refresh to clear ghosting |
+| Smooth update interval | 1, 5, 10, 15, 30, 60 min | 15 | Time-line regional refresh interval (week & 7-day views) |
+| Update mode | `soft`, `hard`, `smooth`, `fullscreen` | `soft` | Style for regional updates: soft (GL16, no flash, dithered), hard (flash + dithered), smooth (A2, no flash, no dithering), fullscreen (full clean refresh every render) |
+| Dithering border | 0, 2, 5, 10, 15, 20 mm | 5 | Floyd-Steinberg old→new blend width at the edges of a changed region |
+| Full refresh interval | Never, 30m, 1h, 1.5h, 2h, 3h, 6h, 12h, 24h | 6h | Forces a full-screen clean refresh to clear ghosting (also runs on day change and when events change) |
 | Event poll interval | seconds | 60 | How often to check for event changes |
 | Brightness | 0.1 – 2.0 | 1.0 | Gamma boost for e-ink contrast |
 | Text size modifier | -8 to +8 | 0 | Global font size adjustment |

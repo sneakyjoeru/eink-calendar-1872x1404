@@ -1,17 +1,25 @@
 """Bridge to the C IT8951 driver binary.
 
 Renders a PIL image to PNG, then calls the C driver to display it.
-Supports regional differential updates (--soft/--hard) that compare
-against the last displayed image and only refresh changed regions.
+Supports regional differential updates (--soft/--hard/--smooth) that
+compare against the last displayed image and only refresh the changed
+region plus a dithered border.
+
 The C driver applies Floyd-Steinberg dithering in the border zone,
-blending from old pixels (outer edge, sparse dots) to new pixels
-(inner edge, maximal noise) — the dithering is adjustable via the
-dither_border_mm setting.
+blending from OLD pixels (outer edge — clean, sparse dots) to NEW
+pixels (inner edge — full new content). Because the outer edge keeps
+the old (already-clean) pixels, no dithering noise is written to
+untouched screen area, so repeated regional updates do not darken the
+rest of the calendar over time. The dithering border is adjustable via
+the dither_border_mm setting.
+
+Full-screen clean refreshes are only ever triggered by force_full (day
+change, full-refresh interval, event add/remove, or manual Save & Render)
+— regional updates never refresh the whole screen.
 """
 import logging
 import os
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -20,7 +28,6 @@ from . import config
 logger = logging.getLogger("eink.driver")
 
 _last_render_time = 0.0
-_use_diff = True  # Use regional diff update by default
 _last_full_refresh = 0.0  # timestamp of last forced full refresh (set on first render)
 
 # Screen: 1872×1404 px, 158×118.5 mm → ~11.85 px/mm
@@ -32,19 +39,27 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                       dither_border_mm: float = 5) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
-    update_mode: "hard" (flash inner changed area + GL16 dithered border),
-                 "soft" (GL16 regional, no flash, dithering visible), or
-                 "fullscreen" (GC16 full screen, full clean refresh)
+    update_mode: regional update flavour for non-full refreshes —
+                 "soft"   (GL16 regional, no flash, dithering visible) [default],
+                 "hard"   (white-flash inner changed area + GL16 dithered border),
+                 "smooth" (A2 1-bit, no flash, fastest — dithering NOT visible).
+                 "fullscreen" is accepted as an alias for forcing a full refresh
+                 and is handled via force_full below (never as a regional mode).
     dither_border_mm: dithering border in mm — blends old→new content with
                       Floyd-Steinberg dithering (maximal noise near the refresh
                       region, fading to sparse dots at the outer edge).
                       Converted to px at ~11.85 px/mm.
 
-    force_full: full screen GC16 refresh. Uses --hard with a deleted diff cache
-                so the C driver does a clean full GL16 refresh AND saves the
-                cache — preserving it for the next regional update's dithering.
-                (Bare --image never saves the cache, so the next regional update
-                would find no previous image and flash the whole screen again.)
+    force_full: full-screen clean refresh. Deletes the diff cache so the C
+                driver's diff path finds no previous image → does a full GL16
+                refresh AND saves the cache, preserving it for the next
+                regional update's dithering. This is the ONLY path that touches
+                the whole screen; regional updates never call it.
+
+    Regional update principle: only the changed bounding box (+ a dithered
+    border) is rewritten. The border blends old→new, so untouched screen area
+    keeps its old (clean) pixels — no dark dithering noise accumulates outside
+    the refreshed region over time.
     """
     global _last_render_time, _last_full_refresh
     import time
@@ -60,14 +75,12 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     # Convert mm to px for border-smooth
     border_px = int(dither_border_mm * PX_PER_MM) if dither_border_mm > 0 else 0
 
-    # Full refresh (fullscreen mode, day change, interval, or Save & Render)
-    # Use --hard with a deleted diff cache: the C driver's diff path finds no
-    # previous image → does a full GL16 refresh AND saves the cache. This
-    # preserves the cache for the next regional update (with dithering).
-    # Bare --image never saves the cache, so the next regional update would
-    # find no previous image and flash the whole screen again.
-    if force_full:
-        import os
+    # ---- Full-screen clean refresh (day change / interval / event change / manual) ----
+    # Delete the diff cache: the C driver finds no previous image → full GL16
+    # refresh of the whole screen AND re-saves the cache. This is the only
+    # branch that refreshes the whole screen; regional updates never do this.
+    # "fullscreen" update_mode is treated as an explicit full-refresh request.
+    if force_full or update_mode == "fullscreen":
         try:
             os.remove("/tmp/it8951_last.png")
         except OSError:
@@ -76,48 +89,27 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                "--brightness", str(brightness),
                "--hard", "--border-smooth", "0"]
         logger.info("Full screen refresh (forced, cache-preserving)")
-    elif smooth:
-        # Smooth minute update: respect update_mode
-        # Hard mode: flash inner changed area + GL16 border dither (small border)
-        # Soft mode: GL16 regional, no flash — dithering visible in border zone
-        if update_mode == "hard":
-            smooth_border = min(border_px, 24)  # cap at ~2mm for hard flash
-        else:
-            smooth_border = border_px
-        if update_mode == "hard":
-            # Hard regional: flash inner changed area + GL16 dithered border
-            cmd = [binary, "--image", str(tmp_path),
-                   "--brightness", str(brightness),
-                   "--hard", "--border-smooth", str(smooth_border)]
-        elif update_mode == "fullscreen":
-            # Fullscreen: GC16 full screen — use --hard with deleted cache so
-            # the C driver saves the diff cache for the next regional update.
-            import os
-            try:
-                os.remove("/tmp/it8951_last.png")
-            except OSError:
-                pass
-            cmd = [binary, "--image", str(tmp_path),
-                   "--brightness", str(brightness),
-                   "--hard", "--border-smooth", "0"]
-            logger.info("Fullscreen refresh (smooth+fullscreen mode)")
-        else:
-            # Soft regional: GL16, no blink — dithering visible in border zone
-            cmd = [binary, "--image", str(tmp_path),
-                   "--brightness", str(brightness),
-                   "--soft", "--border-smooth", str(border_px)]
-    elif _use_diff and update_mode == "hard":
-        # Hard regional: flash inner changed area + GL16 dithered border
-        cmd = [binary, "--image", str(tmp_path),
-               "--brightness", str(brightness),
-               "--hard", "--border-smooth", str(border_px)]
-    elif _use_diff:
-        # Soft regional: GL16, no blink — dithering visible in border zone
-        cmd = [binary, "--image", str(tmp_path),
-               "--brightness", str(brightness),
-               "--soft", "--border-smooth", str(border_px)]
     else:
-        cmd = [binary, "--image", str(tmp_path), "--brightness", str(brightness)]
+        # ---- Regional differential update (only changed region + dithered border) ----
+        # soft:   GL16, no flash — dithering visible in the border zone.
+        # hard:   white-flash the inner changed area, GL16 the dithered border.
+        # smooth: A2 1-bit, no flash, fastest — dithering NOT visible.
+        if update_mode == "hard":
+            # Hard flash should stay small: cap the border so the flash + dither
+            # zone is compact (~2 mm). Soft/smooth keep the full configured border.
+            regional_border = min(border_px, 24)
+            mode_flag = "--hard"
+        elif update_mode == "smooth":
+            regional_border = border_px
+            mode_flag = "--smooth"
+        else:  # "soft" (default)
+            regional_border = border_px
+            mode_flag = "--soft"
+        cmd = [binary, "--image", str(tmp_path),
+               "--brightness", str(brightness),
+               mode_flag, "--border-smooth", str(regional_border)]
+        logger.info("Regional %s update (border=%dpx / %.1fmm)",
+                    update_mode, regional_border, dither_border_mm)
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=30
@@ -130,7 +122,7 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                 if line.startswith("diff:"):
                     logger.info("Driver: %s", line)
         _last_render_time = time.time()
-        if force_full or _last_full_refresh == 0.0:
+        if force_full or update_mode == "fullscreen" or _last_full_refresh == 0.0:
             _last_full_refresh = _last_render_time
         logger.info("Rendered to screen (%.1fs)", time.time() - (_last_render_time - 0.001))
         return True

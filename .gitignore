@@ -31,3 +31,9 @@ tmp_render/
 .ssh
 id_rsa
 id_ed25519*
+
+# C driver build artifacts (build happens in bin/c-driver/obj/)
+bin/c-driver/obj/
+# Stray root-level duplicates of src/ files (canonical copies live in bin/c-driver/src/)
+bin/c-driver/it8951_diff.c
+bin/c-driver/it8951_image.c

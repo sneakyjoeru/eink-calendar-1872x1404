@@ -13,7 +13,7 @@ with a live current-time indicator line.
 - 📋 **Full-day events** — display 0–3 full-day events per day, stacked vertically
 - 📍 **Current-time line** — striped line with time label, auto-updates at configurable intervals (1 min – 60 min)
 - ⚡ **ASAP event updates** — screen refreshes when events are added or removed
-- 🔄 **Regional differential updates** — only refreshes changed areas using the [IT8951 C driver](https://github.com/sneakyjoeru/it8951-epaper-c-orangepi-zero-2w) diff mode (`--soft`/`--hard`/`--smooth`), with Floyd-Steinberg dithering at the edges so changes fade in cleanly. Full-screen refreshes only happen on day change, event add/remove, or the configured interval — never during small regional updates.
+- 🔄 **Regional differential updates** — only refreshes the changed area using the [IT8951 C driver](https://github.com/sneakyjoeru/it8951-epaper-c-orangepi-zero-2w) diff mode (`--soft`/`--hard`). Soft keeps the old pixels around the change (no flash); Hard briefly flashes the changed area. Full-screen GC16 clean refreshes only happen on day change, the configured interval, or when the optional "fullscreen on event end" toggle is on — never during small regional updates.
 - 🌫️ **Dim past events** — past days and ended events are dimmed (toggleable)
 - 📏 **Text size modifier** — adjust all text sizes globally (+/- pixels)
 - 🔐 **HTTPS settings server** — self-signed SSL, OAuth via `http://localhost` redirect
@@ -75,12 +75,15 @@ sudo reboot             # if prompted
 ```
 
 The driver's regional update modes:
-- `--soft` — GL16, no flash, 16-level dithering visible at the edges (recommended).
-- `--hard` — brief white flash of the changed area, GL16 dithered edges.
-- `--smooth` — A2 1-bit, no flash, fastest (no dithering — black/white only).
-- `--border-smooth N` — Floyd-Steinberg old→new blend border in pixels. The
-  outer edge keeps the old (clean) pixels, so repeated regional updates do not
-  darken untouched areas.
+- `--soft` — GL16, no flash. The border keeps the old pixels so the soft update
+  "considers the old state before the partial refresh" — only the inner changed
+  area visibly updates (recommended).
+- `--hard` — brief white flash of the inner changed area, then GL16 the region.
+- `--fullscreen` — full-screen GC16 clean refresh (removes ghosting). Used for
+  day change / interval / manual full refresh, not regional updates.
+- `--border-smooth N` — partial-refresh area expansion in px. The changed region
+  is expanded by N px on each side; the border zone keeps the old content (no
+  dithering), so only the inner changed area is visually updated.
 
 ### Google OAuth credentials
 
@@ -122,9 +125,10 @@ at `https://<pi-ip>:8889/settings`:
 | Date format | 13 options | Default | Page title date format |
 | Max full-day events | 0 (hide), 1, 2, 3 | 3 | Full-day events per day |
 | Smooth update interval | 1, 5, 10, 15, 30, 60 min | 15 | Time-line regional refresh interval (week & 7-day views) |
-| Update mode | `soft`, `hard`, `smooth`, `fullscreen` | `soft` | Style for regional updates: soft (GL16, no flash, dithered), hard (flash + dithered), smooth (A2, no flash, no dithering), fullscreen (full clean refresh every render) |
-| Dithering border | 0, 2, 5, 10, 15, 20 mm | 5 | Floyd-Steinberg old→new blend width at the edges of a changed region |
-| Full refresh interval | Never, 30m, 1h, 1.5h, 2h, 3h, 6h, 12h, 24h | 6h | Forces a full-screen clean refresh to clear ghosting (also runs on day change and when events change) |
+| Update mode | `soft`, `hard` | `soft` | Style for regional updates: soft (GL16, no flash, old state preserved at edges), hard (flash inner + GL16) |
+| Refresh area expansion | 0, 2, 5, 10, 15, 20 mm | 5 | Partial-refresh area expansion — the changed region is expanded by this much; the border keeps the old content (no dithering) |
+| Full refresh interval | Never, 30m, 1h, 1.5h, 2h, 3h, 6h, 12h, 24h | 6h | Forces a full-screen GC16 clean refresh to clear ghosting (also on day change) |
+| Fullscreen on event end | on/off | off | Force a full-screen clean refresh when the event set changes (events ending/starting) — clears dimming ghosting |
 | Event poll interval | seconds | 60 | How often to check for event changes |
 | Brightness | 0.1 – 2.0 | 1.0 | Gamma boost for e-ink contrast |
 | Text size modifier | -8 to +8 | 0 | Global font size adjustment |

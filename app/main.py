@@ -191,13 +191,14 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
             logger.info("Day changed (%s → %s), forcing full refresh", _last_render_date, today_str)
         _last_render_date = today_str
 
-        # Event add/remove (an event ended/started/disappeared) — force a full
-        # clean refresh so the whole calendar is rebuilt without ghosting.
-        # This is the "event finish" trigger: regional updates handle in-view
-        # time-line movement, but event-set changes get a full refresh.
-        if not force_full and events_changed:
+        # Optional: when "fullscreen refresh when events are dimmed" is enabled,
+        # force a full clean refresh whenever the event set changes (an event
+        # ended/started/disappeared). Off by default — regional updates handle
+        # the change without a full-screen flash. This is the opt-in replacement
+        # for the removed automatic "event finish" full refresh.
+        if not force_full and events_changed and settings.get("fullscreen_on_dim", False):
             force_full = True
-            logger.info("Events changed, forcing full refresh (event finish)")
+            logger.info("Events changed + fullscreen_on_dim enabled, forcing full refresh")
 
         # Check full refresh interval setting
         if not force_full:
@@ -222,8 +223,8 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                      force_full=force_full,
-                                     update_mode=settings.get("update_mode", "smooth"),
-                                     dither_border_mm=settings.get("dither_border_mm", 5))
+                                     update_mode=settings.get("update_mode", "soft"),
+                                     refresh_border_mm=settings.get("refresh_border_mm", 5))
         if ok:
             _last_render_duration = time.time() - _render_start
             logger.info("Screen updated (events_changed=%s, %d events, %.1fs)",
@@ -357,7 +358,7 @@ def background_loop():
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                             force_full=False,
                                             update_mode=settings.get("update_mode", "soft"),
-                                            dither_border_mm=settings.get("dither_border_mm", 5))
+                                            refresh_border_mm=settings.get("refresh_border_mm", 5))
                     _last_time_line_render = time.time()
                     logger.info("Time-line regional update (1-min): prepared in %.1fs, landed at :%02d.%01d",
                                 prepare_time,
@@ -415,7 +416,7 @@ def background_loop():
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                             force_full=False,
                                             update_mode=settings.get("update_mode", "soft"),
-                                            dither_border_mm=settings.get("dither_border_mm", 5))
+                                            refresh_border_mm=settings.get("refresh_border_mm", 5))
                     _last_time_line_render = time.time()
                     display_time = _last_time_line_render - display_start
                     logger.info("Time-line regional update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
@@ -603,15 +604,14 @@ async def settings_page(request: Request):
         um=s.get('update_mode', 'soft'),
         sel_um_smooth='selected' if s.get('update_mode', 'soft')=='soft' else '',
         sel_um_hard='selected' if s.get('update_mode', 'soft')=='hard' else '',
-        sel_um_smooth_a2='selected' if s.get('update_mode', 'soft')=='smooth' else '',
-        sel_um_fullscreen='selected' if s.get('update_mode', 'soft')=='fullscreen' else '',
-        db_mm=s.get('dither_border_mm', 5),
-        sel_db_0='selected' if s.get('dither_border_mm', 5)==0 else '',
-        sel_db_2='selected' if s.get('dither_border_mm', 5)==2 else '',
-        sel_db_5='selected' if s.get('dither_border_mm', 5)==5 else '',
-        sel_db_10='selected' if s.get('dither_border_mm', 5)==10 else '',
-        sel_db_15='selected' if s.get('dither_border_mm', 5)==15 else '',
-        sel_db_20='selected' if s.get('dither_border_mm', 5)==20 else '',
+        db_mm=s.get('refresh_border_mm', 5),
+        sel_db_0='selected' if s.get('refresh_border_mm', 5)==0 else '',
+        sel_db_2='selected' if s.get('refresh_border_mm', 5)==2 else '',
+        sel_db_5='selected' if s.get('refresh_border_mm', 5)==5 else '',
+        sel_db_10='selected' if s.get('refresh_border_mm', 5)==10 else '',
+        sel_db_15='selected' if s.get('refresh_border_mm', 5)==15 else '',
+        sel_db_20='selected' if s.get('refresh_border_mm', 5)==20 else '',
+        fullscreen_on_dim='checked' if s.get('fullscreen_on_dim', False) else '',
         sel_fd_0='selected' if s['max_full_day_events']==0 else '',
         sel_fd_1='selected' if s['max_full_day_events']==1 else '',
         sel_fd_2='selected' if s['max_full_day_events']==2 else '',
@@ -668,8 +668,9 @@ async def update_settings(request: Request):
         "time_line_interval_min": int(fd.get("time_line_interval_min", 15)),
         "event_poll_interval_sec": int(fd.get("event_poll_interval_sec", 60)),
         "full_refresh_interval_hours": float(fd.get("full_refresh_interval_hours", 6)),
-        "update_mode": fd.get("update_mode", "smooth"),
-        "dither_border_mm": float(fd.get("dither_border_mm", 5)),
+        "update_mode": fd.get("update_mode", "soft"),
+        "refresh_border_mm": float(fd.get("refresh_border_mm", 5)),
+        "fullscreen_on_dim": fd.get("fullscreen_on_dim") == "1",
         "brightness": float(fd.get("brightness", 1.4)),
         "timezone": fd.get("timezone", ""),
         "time_format": fd.get("time_format", "24h"),
@@ -1184,28 +1185,27 @@ input[type="range"] {{ width: 100%; }}
     <div class="field">
       <label>Update style for small changes (time line, etc.)</label>
       <select name="update_mode">
-        <option value="soft" {sel_um_smooth}>Soft · no flash, smooth dithered edges (recommended)</option>
-        <option value="hard" {sel_um_hard}>Hard · brief flash of changed area, dithered edges</option>
-        <option value="smooth" {sel_um_smooth_a2}>Fast · no flash, black/white only (no dithering)</option>
+        <option value="soft" {sel_um_smooth}>Soft · no flash, keeps old state at edges (recommended)</option>
+        <option value="hard" {sel_um_hard}>Hard · brief flash of the changed area</option>
       </select>
-      <div class="note">Soft &amp; Hard blend old→new at the edges with dithering so the change fades in cleanly. These only ever refresh the small changed region. Full-screen clean refreshes happen automatically on day change, when events are added/removed, or on the interval below.</div>
+      <div class="note">Both refresh only the small changed region. Soft keeps the previous pixels around the change (no flash); Hard briefly flashes the changed area. Full-screen clean refreshes happen on day change or the interval below.</div>
     </div>
     <div class="field">
-      <label>Dithering edge width</label>
-      <select name="dither_border_mm">
-        <option value="0" {sel_db_0}>None (hard edge)</option>
+      <label>Partial refresh area expansion</label>
+      <select name="refresh_border_mm">
+        <option value="0" {sel_db_0}>None (exact changed area)</option>
         <option value="2" {sel_db_2}>2 mm · ~24 px</option>
         <option value="5" {sel_db_5}>5 mm · ~59 px</option>
         <option value="10" {sel_db_10}>10 mm · ~119 px</option>
         <option value="15" {sel_db_15}>15 mm · ~178 px</option>
         <option value="20" {sel_db_20}>20 mm · ~237 px</option>
       </select>
-      <div class="note">Wider = softer, more gradual fade. Only affects the changed region's edges — untouched areas stay clean.</div>
+      <div class="note">Expands the refreshed region by this much on each side. The border keeps the old content, so only the inner changed area visibly updates. Wider = more margin around the change.</div>
     </div>
     <div class="field">
       <label>Full-screen clean refresh</label>
       <select name="full_refresh_interval_hours">
-        <option value="0" {sel_fr_0}>Never (only on day / event change)</option>
+        <option value="0" {sel_fr_0}>Never (only on day change)</option>
         <option value="0.5" {sel_fr_0_5}>Every 30 min</option>
         <option value="1" {sel_fr_1}>Every 1 hour</option>
         <option value="1.5" {sel_fr_1_5}>Every 1.5 hours</option>
@@ -1215,8 +1215,12 @@ input[type="range"] {{ width: 100%; }}
         <option value="12" {sel_fr_12}>Every 12 hours</option>
         <option value="24" {sel_fr_24}>Every 24 hours</option>
       </select>
-      <div class="note">Wipes the whole screen to clear any ghosting. Also runs automatically when events are added or removed.</div>
+      <div class="note">Wipes the whole screen (GC16) to clear any ghosting.</div>
     </div>
+    <label class="check-row">
+      <input type="checkbox" name="fullscreen_on_dim" value="1" {fullscreen_on_dim}>
+      <span>Full-screen refresh when an event ends (clears dimming ghosting)</span>
+    </label>
     <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:10px">🖼 Preview the screen live</a>
   </div>
 </div>

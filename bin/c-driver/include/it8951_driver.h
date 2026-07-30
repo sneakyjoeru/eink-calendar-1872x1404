@@ -124,15 +124,16 @@ void it8951_sleep(it8951_t *dev);
 /* ---- Regional differential update (it8951_diff.c) ---- */
 
 /* Refresh modes for diff update */
-#define DIFF_MODE_SOFT   0   /* GC16 only, no blinking */
-#define DIFF_MODE_HARD   1   /* White-flash region then GC16 */
-#define DIFF_MODE_SMOOTH 2   /* A2 fast mode, 1-bit dithered, no flash */
+#define DIFF_MODE_SOFT       0   /* GL16 only, no blinking, no flash */
+#define DIFF_MODE_HARD       1   /* White-flash inner region then GL16 */
+#define DIFF_MODE_FULLSCREEN 3   /* GC16 full-screen clean refresh */
 
 /* Display with differential regional update.
    Compares new_data against last displayed image (stored at /tmp/it8951_last.png).
    Only sends changed region + border to display.
-   mode: DIFF_MODE_SOFT or DIFF_MODE_HARD
-   border: pixels to expand changed region (for dithering, default 20)
+   mode: DIFF_MODE_SOFT, DIFF_MODE_HARD, or DIFF_MODE_FULLSCREEN
+   border: pixels to expand the changed region (old content kept in the border
+           zone; only the inner changed area is visually updated; default 20)
    threshold: pixel difference to detect change (default 5) */
 int it8951_display_diff(it8951_t *dev, const uint8_t *new_data,
                         int w, int h, int mode, int border, int threshold);

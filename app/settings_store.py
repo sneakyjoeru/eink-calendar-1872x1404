@@ -15,8 +15,9 @@ _DEFAULTS = {
     "time_line_interval_min": 15, # minutes between time-line updates
     "event_poll_interval_sec": 60,# seconds between event polls
     "full_refresh_interval_hours": 6, # hours between forced full refreshes (0 = never, only day change/event change)
-    "update_mode": "soft",       # "soft" (GL16 regional, no flash, dithering visible), "hard" (flash inner + GL16 dither), "smooth" (A2 1-bit, no flash, fastest — no dithering). Full-screen refresh is governed by force_full (day/event change/interval), not this setting.
-    "dither_border_mm": 5,        # dithering border in mm (0 = no dithering, converted to px at ~11.85 px/mm)
+    "update_mode": "soft",       # "soft" (GL16 regional, no flash, old state preserved at border), "hard" (flash inner + GL16 region). Full-screen refresh is governed by force_full (day change/interval/dim-toggle/manual), not this setting.
+    "refresh_border_mm": 5,     # partial-refresh area expansion in mm (0 = none; old content kept in the border zone, only the inner changed area visibly updates)
+    "fullscreen_on_dim": False, # when True, force a full-screen clean refresh when the event set changes (events ending/starting) — clears dimming ghosting. Off by default.
     "brightness": 1.4,            # gamma boost for e-ink
     "timezone": "",               # IANA timezone, empty = system default
     "time_format": "24h",         # "24h" or "12h"
@@ -35,10 +36,14 @@ def load() -> dict:
         try:
             data = json.loads(config.SETTINGS_FILE.read_text())
             merged = {**_DEFAULTS, **data}
-            # "fullscreen" is no longer a regional update mode — normalize the
-            # legacy value to "soft" so regional updates don't force a whole
-            # screen refresh every tick.
-            if merged.get("update_mode") == "fullscreen":
+            # Migrate legacy settings removed in this version:
+            #  - dither_border_mm → refresh_border_mm (renamed, same meaning)
+            #  - update_mode 'smooth'/'fullscreen' → 'soft' (those modes no longer exist)
+            if "dither_border_mm" in merged and "refresh_border_mm" not in data:
+                merged["refresh_border_mm"] = merged.pop("dither_border_mm")
+            elif "dither_border_mm" in merged:
+                merged.pop("dither_border_mm", None)
+            if merged.get("update_mode") in ("smooth", "fullscreen"):
                 merged["update_mode"] = "soft"
             return merged
         except (json.JSONDecodeError, OSError):

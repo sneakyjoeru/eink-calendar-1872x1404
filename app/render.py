@@ -659,7 +659,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         line_h = 26
         for ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min in draw_infos:
             summary = ev.get("summary", "")
-            time_str = _ev_time_str(ev, now)
+            time_str = _ev_time_str(ev, now, time_format)
             avail_w = xr - xl - 8
             txt_x = xl + 10
 
@@ -785,14 +785,25 @@ def _ev_minutes(ev: dict, now: datetime.datetime, start: bool = True) -> int:
     return 0
 
 
-def _ev_time_str(ev: dict, now: datetime.datetime) -> str:
-    """Format event start time as HH:MM."""
-    dt = ev["start"]
-    if isinstance(dt, datetime.datetime):
-        if dt.tzinfo:
-            dt = dt.astimezone(now.tzinfo or datetime.timezone.utc).replace(tzinfo=None)
-        return dt.strftime("%H:%M")
-    return ""
+def _ev_time_str(ev: dict, now: datetime.datetime, time_format: str = "24h") -> str:
+    """Format event time range as 'HH:MM–HH:MM' (start–end).
+    Falls back to just the start time if no end time is available."""
+    start = ev["start"]
+    end = ev.get("end")
+    fmt = "%-I:%M" if time_format == "12h" else "%H:%M"
+
+    def _fmt(dt):
+        if isinstance(dt, datetime.datetime):
+            if dt.tzinfo:
+                dt = dt.astimezone(now.tzinfo or datetime.timezone.utc).replace(tzinfo=None)
+            return dt.strftime(fmt)
+        return ""
+
+    s = _fmt(start)
+    e = _fmt(end) if end is not None else ""
+    if s and e:
+        return f"{s}–{e}"
+    return s
 
 
 def _ev_end_time_str(ev: dict, now: datetime.datetime) -> str:

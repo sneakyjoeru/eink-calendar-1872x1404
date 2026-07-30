@@ -1187,9 +1187,8 @@ input[type="range"] {{ width: 100%; }}
         <option value="soft" {sel_um_smooth}>Soft · no flash, smooth dithered edges (recommended)</option>
         <option value="hard" {sel_um_hard}>Hard · brief flash of changed area, dithered edges</option>
         <option value="smooth" {sel_um_smooth_a2}>Fast · no flash, black/white only (no dithering)</option>
-        <option value="fullscreen" {sel_um_fullscreen}>Always full-screen · clean refresh every time</option>
       </select>
-      <div class="note">Soft &amp; Hard blend old→new at the edges with dithering so the change fades in cleanly. Full-screen refreshes (below) happen automatically on day change, when events change, or on the interval.</div>
+      <div class="note">Soft &amp; Hard blend old→new at the edges with dithering so the change fades in cleanly. These only ever refresh the small changed region. Full-screen clean refreshes happen automatically on day change, when events are added/removed, or on the interval below.</div>
     </div>
     <div class="field">
       <label>Dithering edge width</label>

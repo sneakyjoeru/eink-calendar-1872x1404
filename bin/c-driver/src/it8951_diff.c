@@ -206,10 +206,12 @@ int it8951_display_diff(it8951_t *dev, const uint8_t *new_data,
     old_data = stbi_load(LAST_IMG_PATH, &old_w, &old_h, &old_ch, 1);
 
     if (!old_data || old_w != screen_w || old_h != screen_h) {
-        /* No previous image — full refresh, plain 8bpp */
+        /* No previous image — full clean refresh with GC16 (full grayscale
+           clear cycle, removes ghosting). GL16 would only update without a
+           clean cycle, leaving ghosting. Save current as last for next diff. */
         if (old_data) stbi_image_free(old_data);
-        printf("diff: no previous image, doing full refresh\n");
-        it8951_display_8bpp(dev, new_data, 0, 0, screen_w, screen_h, GL16_MODE);
+        printf("diff: no previous image, doing full GC16 clean refresh\n");
+        it8951_display_8bpp(dev, new_data, 0, 0, screen_w, screen_h, GC16_MODE);
         /* Save current as last */
         stbi_write_png(LAST_IMG_PATH, screen_w, screen_h, 1, new_data, screen_w);
         return 0;

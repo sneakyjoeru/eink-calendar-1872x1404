@@ -43,8 +43,8 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                  "soft"   (GL16 regional, no flash, dithering visible) [default],
                  "hard"   (white-flash inner changed area + GL16 dithered border),
                  "smooth" (A2 1-bit, no flash, fastest — dithering NOT visible).
-                 "fullscreen" is accepted as an alias for forcing a full refresh
-                 and is handled via force_full below (never as a regional mode).
+                 "fullscreen" is NOT a regional mode; it falls through to soft
+                 here. Whole-screen refreshes are governed solely by force_full.
     dither_border_mm: dithering border in mm — blends old→new content with
                       Floyd-Steinberg dithering (maximal noise near the refresh
                       region, fading to sparse dots at the outer edge).
@@ -76,11 +76,11 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     border_px = int(dither_border_mm * PX_PER_MM) if dither_border_mm > 0 else 0
 
     # ---- Full-screen clean refresh (day change / interval / event change / manual) ----
-    # Delete the diff cache: the C driver finds no previous image → full GL16
-    # refresh of the whole screen AND re-saves the cache. This is the only
-    # branch that refreshes the whole screen; regional updates never do this.
-    # "fullscreen" update_mode is treated as an explicit full-refresh request.
-    if force_full or update_mode == "fullscreen":
+    # Only force_full (never a regional update_mode) triggers a whole-screen
+    # refresh. We delete the diff cache so the C driver's diff path finds no
+    # previous image → does a full GC16 clean refresh AND re-saves the cache,
+    # preserving it for the next regional update's dithering.
+    if force_full:
         try:
             os.remove("/tmp/it8951_last.png")
         except OSError:
@@ -88,9 +88,12 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--hard", "--border-smooth", "0"]
-        logger.info("Full screen refresh (forced, cache-preserving)")
+        logger.info("Full screen GC16 clean refresh (forced, cache-preserving)")
     else:
         # ---- Regional differential update (only changed region + dithered border) ----
+        # This branch ALWAYS refreshes only the changed bounding box + a dithered
+        # border, never the whole screen — regardless of update_mode. "fullscreen"
+        # as a setting is not a regional mode here; it falls through to soft.
         # soft:   GL16, no flash — dithering visible in the border zone.
         # hard:   white-flash the inner changed area, GL16 the dithered border.
         # smooth: A2 1-bit, no flash, fastest — dithering NOT visible.
@@ -102,7 +105,7 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         elif update_mode == "smooth":
             regional_border = border_px
             mode_flag = "--smooth"
-        else:  # "soft" (default)
+        else:  # "soft" (default) — also covers "fullscreen" setting
             regional_border = border_px
             mode_flag = "--soft"
         cmd = [binary, "--image", str(tmp_path),
@@ -122,7 +125,7 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                 if line.startswith("diff:"):
                     logger.info("Driver: %s", line)
         _last_render_time = time.time()
-        if force_full or update_mode == "fullscreen" or _last_full_refresh == 0.0:
+        if force_full or _last_full_refresh == 0.0:
             _last_full_refresh = _last_render_time
         logger.info("Rendered to screen (%.1fs)", time.time() - (_last_render_time - 0.001))
         return True

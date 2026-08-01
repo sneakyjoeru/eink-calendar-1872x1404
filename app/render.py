@@ -1129,6 +1129,37 @@ def _ev_end_time_str(ev: dict, now: datetime.datetime) -> str:
 
 
 # ---- Current-time line ----
+def _styled_time_line(draw, x_start, x_end, y, style):
+    """Draw the current-time indicator across a column in the selected style —
+    'solid', 'dotted', or 'wavy'. Shared by the in-range line and the
+    out-of-range placeholder so the chosen style is always honoured (the
+    placeholder used to be hardcoded stripes, making 'wavy' look like 'dotted')."""
+    x_start, x_end, y = int(x_start), int(x_end), int(y)
+    if style == "solid":
+        _hline(draw, x_start, y, x_end, BLACK, width=5)
+        _hline(draw, x_start, y - 4, x_end, WHITE, width=1)
+        _hline(draw, x_start, y + 4, x_end, WHITE, width=1)
+    elif style == "wavy":
+        amp, period = 5, 22
+
+        def pts(dy):
+            return [(sx, int(round(y + dy + amp * math.sin(
+                        (sx - x_start) / period * 2 * math.pi))))
+                    for sx in range(x_start, x_end + 1)]
+        draw.line(pts(-3), fill=WHITE, width=1)   # white outline above
+        draw.line(pts(3), fill=WHITE, width=1)    # white outline below
+        draw.line(pts(0), fill=BLACK, width=3)    # continuous black sine
+    else:  # dotted (default)
+        stripe_w = 6
+        for sx in range(x_start, x_end, stripe_w * 2):
+            x2 = min(sx + stripe_w, x_end)
+            draw.rectangle([sx, y - 4, x2, y - 2], fill=WHITE)
+            draw.rectangle([sx, y + 3, x2, y + 5], fill=WHITE)
+        for sx in range(x_start, x_end, stripe_w * 2):
+            x2 = min(sx + stripe_w, x_end)
+            draw.rectangle([sx, y - 2, x2, y + 2], fill=BLACK)
+
+
 def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_format="24h",
                      style="dotted"):
     """Draw a horizontal line at the current time position.
@@ -1184,12 +1215,9 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
     x_end = x_start + col_w
 
     if now_min < ds_min:
-        # Before visible range — striped indicator at 15-min mark
+        # Before visible range — styled indicator at 15-min mark
         y = int(grid_y + 15 * minute_h)
-        # Striped pattern: alternating black/white vertical stripes across column width
-        stripe_w = 6
-        for sx in range(x_start, x_end, stripe_w * 2):
-            draw.rectangle([sx, y - 4, sx + stripe_w, y + 4], fill=BLACK)
+        _styled_time_line(draw, x_start, x_end, y, style)
         # Time label pill
         time_str = now.strftime("%H:%M")
         label_font = _font(26, bold=True)
@@ -1199,11 +1227,9 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
         return
 
     if now_min > de_min:
-        # After visible range — striped indicator at 45-min mark
+        # After visible range — styled indicator at 45-min mark
         y = int(grid_y + grid_h - 15 * minute_h)
-        stripe_w = 6
-        for sx in range(x_start, x_end, stripe_w * 2):
-            draw.rectangle([sx, y - 4, sx + stripe_w, y + 4], fill=BLACK)
+        _styled_time_line(draw, x_start, x_end, y, style)
         # Time label pill
         time_str = now.strftime("%H:%M")
         label_font = _font(26, bold=True)
@@ -1215,38 +1241,8 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
     y = grid_y + (now_min - ds_min) * minute_h
 
     # Draw the time line in the selected style
+    _styled_time_line(draw, x_start, x_end, int(y), style)
     y = int(y)
-    if style == "solid":
-        # Thick solid line with white outline (exact rectangles, no AA)
-        _hline(draw, x_start, y, x_end, BLACK, width=5)
-        _hline(draw, x_start, y - 4, x_end, WHITE, width=1)
-        _hline(draw, x_start, y + 4, x_end, WHITE, width=1)
-    elif style == "wavy":
-        # Wavy line: sine-like pattern using small rectangles
-        import math
-        wave_amp = 4
-        wave_period = 12
-        for sx in range(int(x_start), int(x_end)):
-            offset = int(wave_amp * math.sin((sx - x_start) / wave_period * 2 * math.pi))
-            draw.point((sx, y + offset), fill=BLACK)
-            draw.point((sx, y + offset - 1), fill=BLACK)
-        # White outline above/below
-        for sx in range(int(x_start), int(x_end), 2):
-            offset_top = int(wave_amp * math.sin((sx - x_start) / wave_period * 2 * math.pi))
-            draw.point((sx, y + offset_top - 3), fill=WHITE)
-            draw.point((sx, y + offset_top + 3), fill=WHITE)
-    else:
-        # Dotted/striped (default) — same style as placeholder indicators
-        stripe_w = 6
-        # White outline above and below
-        for sx in range(int(x_start), int(x_end), stripe_w * 2):
-            x2 = min(sx + stripe_w, x_end)
-            draw.rectangle([sx, y - 4, x2, y - 2], fill=WHITE)
-            draw.rectangle([sx, y + 3, x2, y + 5], fill=WHITE)
-        # Black striped line
-        for sx in range(int(x_start), int(x_end), stripe_w * 2):
-            x2 = min(sx + stripe_w, x_end)
-            draw.rectangle([sx, y - 2, x2, y + 2], fill=BLACK)
 
     # Small time label at the right edge of the line
     time_str = now.strftime("%H:%M")

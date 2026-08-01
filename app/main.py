@@ -486,7 +486,9 @@ async def startup():
     elif not calendar_client.is_authenticated():
         render_setup_screen()
     else:
-        do_render(force=True)
+        # Mandatory full-screen clean refresh on startup/deploy — clears any
+        # ghosting residue and ensures the screen matches the current image.
+        do_render(force=True, force_full=True)
 
     # Start scheduler
     t = threading.Thread(target=background_loop, daemon=True)
@@ -988,8 +990,7 @@ async def auth_exchange(code: str = Form(...)):
     """Exchange an authorization code for tokens."""
     ok, err = calendar_client.complete_auth(code)
     if ok:
-        do_render(force=True)
-        do_render(force=True)
+        do_render(force=True, force_full=True)
         return {"ok": True}
     return JSONResponse({"error": err or "Code exchange failed"}, status_code=400)
 
@@ -1001,8 +1002,7 @@ async def auth_callback(code: str = ""):
     if code:
         ok, _ = calendar_client.complete_auth(code)
         if ok:
-            do_render(force=True)
-            do_render(force=True)
+            do_render(force=True, force_full=True)
             return RedirectResponse(url="/settings?auth=success")
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;padding:40px;background:#1a1a2e;color:#eee">

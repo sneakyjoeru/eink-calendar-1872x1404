@@ -6,6 +6,7 @@ Supports month / week / 7-days views with a current-time indicator line.
 import datetime
 import logging
 import math
+import re
 from typing import Optional
 
 from PIL import Image, ImageDraw, ImageFont
@@ -76,6 +77,18 @@ def _text_w(draw: ImageDraw.ImageDraw, text: str, font) -> int:
 def _text_h(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[3] - bbox[1]
+
+
+def _clean_desc(s: str) -> str:
+    """Flatten a (possibly HTML) event description to a single wrapped-able line
+    of plain text. Google descriptions often contain HTML/newlines."""
+    if not s:
+        return ""
+    s = re.sub(r"<br\s*/?>", " ", s, flags=re.I)
+    s = re.sub(r"<[^>]+>", " ", s)          # strip tags
+    s = s.replace("&nbsp;", " ").replace("&amp;", "&")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s[:200]
 
 
 # ---- Exact (non-antialiased) drawing helpers for b/w mode ----
@@ -873,15 +886,23 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             avail_w = xr - xl - 8
             txt_x = xl + 10
 
-            # Build ordered list of lines to render
+            # Build ordered list of (text, kind) lines to render. Priority:
+            # title > time > description. Description is lowest priority and only
+            # fills whatever vertical room is left in the card.
             render_lines = []
             if summary and summary != "(No title)":
                 for line in _wrap_text_lines(draw, summary, event_font, avail_w):
-                    render_lines.append((line, False))
+                    render_lines.append((line, "title"))
             if time_str:
                 if render_lines:
-                    render_lines.append(("", False))  # spacing from title
-                render_lines.append((time_str, True))
+                    render_lines.append(("", "spacer"))
+                render_lines.append((time_str, "time"))
+            desc = _clean_desc(ev.get("description", ""))
+            if desc:
+                if render_lines:
+                    render_lines.append(("", "spacer"))
+                for line in _wrap_text_lines(draw, desc, event_font_sm, avail_w):
+                    render_lines.append((line, "desc"))
 
             if not render_lines:
                 continue
@@ -907,13 +928,20 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 text_fill = GRAY_MID if is_dimmed else BLACK
             # White text on a solid black box (1-bit mode) reads poorly with a
             # regular weight — use bold so thin strokes survive on black.
+            # title/time use the event weight (bold on black in b/w); the
+            # lowest-priority description uses the same colour but a smaller,
+            # thinner face so it reads as secondary.
             line_font = event_bold if (bw_mode and not is_dimmed) else event_font
+            fonts = {"title": line_font, "time": line_font, "desc": event_font_sm}
+            heights = {"title": line_h, "time": line_h, "desc": 20}
 
             y = ey_top + 4
-            for text, is_time in render_lines:
-                if not text:
+            for text, kind in render_lines:
+                if kind == "spacer" or not text:
                     y += 4
                     continue
+                lh = heights.get(kind, line_h)
+                f = fonts.get(kind, line_font)
                 while True:
                     blocked = False
                     for o_top, o_bot in overlap_ranges:
@@ -922,23 +950,23 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         # the top edge of an on-top event must move down too, or
                         # its text bleeds into that event (e.g. a time label
                         # leaking onto the event that starts mid-line).
-                        if y + line_h > o_top and y < o_bot:
+                        if y + lh > o_top and y < o_bot:
                             y = o_bot + 4
                             blocked = True
                             break
                     if not blocked:
                         break
-                    if y + line_h > ey_bot - 4:
+                    if y + lh > ey_bot - 4:
                         break
-                if y + line_h > ey_bot - 4:
+                if y + lh > ey_bot - 4:
                     break  # No room
                 # For checkerboard-dimmed events, draw a white outline behind
                 # the black text so it's readable on both B and W checker pixels
                 if bw_mode and is_dimmed and dim_style == "checkerboard":
                     for ox, oy in [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]:
-                        draw.text((txt_x + ox, y + oy), text, fill=WHITE, font=event_font)
-                draw.text((txt_x, y), text, fill=text_fill, font=line_font)
-                y += line_h
+                        draw.text((txt_x + ox, y + oy), text, fill=WHITE, font=f)
+                draw.text((txt_x, y), text, fill=text_fill, font=f)
+                y += lh
 
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)
     fd_font = _font(24)

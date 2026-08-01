@@ -894,7 +894,12 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 while True:
                     blocked = False
                     for o_top, o_bot in overlap_ranges:
-                        if y >= o_top and y + line_h <= o_bot:
+                        # Push the line below any covering event it would touch —
+                        # not only ones it falls fully inside. A line straddling
+                        # the top edge of an on-top event must move down too, or
+                        # its text bleeds into that event (e.g. a time label
+                        # leaking onto the event that starts mid-line).
+                        if y + line_h > o_top and y < o_bot:
                             y = o_bot + 4
                             blocked = True
                             break

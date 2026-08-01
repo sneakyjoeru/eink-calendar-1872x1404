@@ -238,26 +238,32 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
     cell_font = _font(32, bold=True)
     event_font = _font(22)
     event_bold = _font(22, bold=True)
+    # Outer left + top border (cells only draw right+bottom edges)
+    draw.line([(grid_x, grid_y), (grid_x, grid_y + num_weeks * row_h - 1)], fill=GRAY_LIGHT, width=1)
+    draw.line([(grid_x, grid_y), (grid_x + 7 * col_w - 1, grid_y)], fill=GRAY_LIGHT, width=1)
     day_num = grid_start
     for week in range(num_weeks):
         for col in range(7):
             x = grid_x + col * col_w
             y = grid_y + week * row_h
 
-            # Cell border — strong at month boundaries (day+1 or day+7 = normal, else strong)
+            # Cell border — draw only RIGHT and BOTTOM edges to avoid doubling
+            # (a full rectangle per cell draws shared edges twice, 1px apart).
+            # Strong (thick 3px) at month boundaries; thin otherwise.
             next_day = day_num + datetime.timedelta(days=1)
             next_week = day_num + datetime.timedelta(days=7)
             right_strong = col < 6 and next_day.month != day_num.month
             bottom_strong = week < num_weeks - 1 and next_week.month != day_num.month
             if right_strong or bottom_strong:
-                if bw_mode:
-                    draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=BLACK)
-                else:
-                    draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
                 if right_strong:
                     draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
                 if bottom_strong:
                     draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+                # Non-strong edges as thin lines
+                if not right_strong and col < 6:
+                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                if not bottom_strong and week < num_weeks - 1:
+                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
             elif bw_mode:
                 # Dotted cell border in b/w mode (2x spacing: 2px dot, 6px gap).
                 # Draw ONLY the dotted segments — no solid rectangle underneath
@@ -406,26 +412,29 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
     cell_font = _font(32, bold=True)
     event_font = _font(22)
     event_bold = _font(22, bold=True)
+    # Outer left + top border (cells only draw right+bottom edges)
+    draw.line([(grid_x, grid_y), (grid_x, grid_y + num_weeks * row_h - 1)], fill=GRAY_LIGHT, width=1)
+    draw.line([(grid_x, grid_y), (grid_x + 7 * col_w - 1, grid_y)], fill=GRAY_LIGHT, width=1)
     day_num = start_date
     for week in range(num_weeks):
         for col in range(7):
             x = grid_x + col * col_w
             y = grid_y + week * row_h
 
-            # Cell border — strong at month boundaries
+            # Cell border — draw only RIGHT and BOTTOM edges to avoid doubling
             next_day = day_num + datetime.timedelta(days=1)
             next_week = day_num + datetime.timedelta(days=7)
             right_strong = col < 6 and next_day.month != day_num.month
             bottom_strong = week < num_weeks - 1 and next_week.month != day_num.month
             if right_strong or bottom_strong:
-                if bw_mode:
-                    draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=BLACK)
-                else:
-                    draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
                 if right_strong:
                     draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
                 if bottom_strong:
                     draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+                if not right_strong and col < 6:
+                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                if not bottom_strong and week < num_weeks - 1:
+                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
             elif bw_mode:
                 # Dotted cell border — draw ONLY dots, no solid rectangle
                 if col < 6 and not right_strong:

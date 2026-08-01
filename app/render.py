@@ -139,14 +139,13 @@ def render_calendar(view_mode: str, events: list[dict],
         ip_center = (title_right + sub_left) // 2
         draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
-    # Ensure text letters have a solid black core: any pixel darker than 160
-    # is forced to pure black (0). Only the lightest AA edge pixels (160-254)
-    # remain as gray. This ensures thin letters like r, d, k, t have a solid
-    # black body with AA only at the very outer edge — preventing ghosting
-    # where partial-coverage gray pixels create a visible double image.
+    # Grayscale mode: threshold the entire image to pure B/W to eliminate
+    # anti-aliasing artifacts. The IT8951 GL16 waveform ghosts gray AA edge
+    # pixels, creating a visible doubling/shift effect on text and thin lines.
+    # By making everything pure B/W (no gray), there are no gray edge pixels
+    # to ghost. Gray grid lines (GRAY_LIGHT=200) become white after threshold,
+    # so they are drawn as BLACK in this mode to survive the <128 threshold.
     if bw_mode:
-        # b/w mode: convert to 1-bit. Hard threshold for strong text when no
-        # dimming; Floyd-Steinberg dithering for AA when dimming is enabled.
         gray = img.convert("L")
         if dim_past_events or crossed_event_dim:
             bw = gray.convert("1", dither=Image.FLOYDSTEINBERG)
@@ -154,10 +153,13 @@ def render_calendar(view_mode: str, events: list[dict],
             bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
         img = bw.convert("RGB")
     else:
-        # Grayscale mode: force dark pixels to pure black (solid letter core)
+        # Grayscale mode: hard threshold to eliminate ALL gray AA pixels that
+        # cause GL16 ghosting/doubling. Threshold at 201 keeps grid lines
+        # (GRAY_LIGHT=200, GRAY_HOUR_LINE=170, GRAY_DIM=153) as black, while
+        # event fills (GRAY_VLIGHT=239) and background (255) stay white.
         gray = img.convert("L")
-        gray = gray.point(lambda x: 0 if x < 160 else x, "L")
-        img = gray.convert("RGB")
+        bw = gray.point(lambda x: 0 if x < 201 else 255, "L")
+        img = bw.convert("RGB")
 
     return img
 

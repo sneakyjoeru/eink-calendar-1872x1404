@@ -52,6 +52,22 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     return _FONT_CACHE[key]
 
 
+def _font_heavy(size: int) -> ImageFont.FreeTypeFont:
+    """Real bold font. Only safe in 1-bit (b/w) mode, which renders via DU and
+    the 2px-grid snap — there the extra weight keeps white-on-black text legible
+    (thin regular strokes get eroded by the snap and thresholding). Do NOT use in
+    grayscale/GC16 mode, where bold strokes double/split."""
+    size = max(4, size + _SIZE_MODIFIER)
+    path = _FONT_PATHS[1]  # DejaVuSans-Bold
+    key = (path, size)
+    if key not in _FONT_CACHE:
+        try:
+            _FONT_CACHE[key] = ImageFont.truetype(path, size)
+        except Exception:
+            _FONT_CACHE[key] = ImageFont.load_default()
+    return _FONT_CACHE[key]
+
+
 def _text_w(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0]
@@ -183,11 +199,13 @@ def render_calendar(view_mode: str, events: list[dict],
     # b/w mode: threshold the entire image to pure 1-bit black/white.
     # (In grayscale mode we intentionally keep the real gray levels — see below.)
     if bw_mode:
+        # Always hard-threshold to pure 1-bit — never Floyd-Steinberg. b/w
+        # content is already black/white (dim events use explicit white fills /
+        # checkerboard), so dithering adds nothing and actively shreds thin
+        # white-on-black text: it breaks up 'W' strokes and fills in the
+        # counters of '0'/'e'/'a'. Hard threshold keeps glyphs crisp.
         gray = img.convert("L")
-        if dim_past_events or crossed_event_dim:
-            bw = gray.convert("1", dither=Image.FLOYDSTEINBERG)
-        else:
-            bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
+        bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
         img = bw.convert("RGB")
     # else: grayscale mode — keep the palette's real gray levels (event fills,
     # dim shading, grid/hour lines). Previously this branch hard-thresholded
@@ -738,7 +756,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         timed_events_by_date.setdefault(d, []).append(ev)
 
     event_font = _font(24)
-    event_bold = _font(24, bold=True)
+    event_bold = _font_heavy(24)   # real bold — for white-on-black text in b/w mode
     event_font_sm = _font(18)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
@@ -827,9 +845,9 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             by0 = int(ey_top)
             by1 = int(ey_top + eh - 1)
             if bw_mode:
-                # Plain sharp rectangle in b/w mode (rounded corners AA to gray)
-                draw.rectangle([bx0, by0, bx1, by1],
-                               fill=box_fill, outline=box_outline, width=2)
+                # 3px rounded corners (hard-thresholded, so corners step cleanly)
+                draw.rounded_rectangle([bx0, by0, bx1, by1], radius=3,
+                                       fill=box_fill, outline=box_outline, width=2)
             else:
                 draw.rounded_rectangle([bx0, by0, bx1, by1], radius=6,
                                        fill=box_fill, outline=box_outline, width=2)
@@ -953,9 +971,11 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             fy0 = int(ey - 2)
             fy1 = int(ey + fd_h - 2)
             if bw_mode:
-                draw.rectangle([bx0, fy0, bx1, fy1],
-                               fill=BLACK, outline=BLACK, width=2)
-                draw.text((xl + 6, ey - 1), display, fill=WHITE, font=fd_font)
+                # 3px rounded, white border separates stacked full-day bars,
+                # bold white text stays legible on black.
+                draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=3,
+                                       fill=BLACK, outline=WHITE, width=2)
+                draw.text((xl + 6, ey - 1), display, fill=WHITE, font=_font_heavy(24))
             else:
                 draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=6,
                                        fill=GRAY_VLIGHT, outline=BLACK, width=2)

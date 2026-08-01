@@ -71,7 +71,7 @@ def ensure_ssl_cert():
              "-keyout", str(key_path), "-out", str(cert_path),
              "-days", "3650", "-nodes",
              "-subj", "/CN=E-Ink Calendar",
-             "-addext", "subjectAltName=DNS:localhost,IP:192.168.0.199,IP:127.0.0.1"],
+             "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:192.168.0.199,IP:10.42.0.1"],
             capture_output=True, text=True, timeout=30, check=True,
         )
         cert_path.chmod(0o644)

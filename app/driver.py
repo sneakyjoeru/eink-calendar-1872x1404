@@ -110,7 +110,11 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     tmp_path = config.TMP_DIR / "render.png"
     # Snap to the panel's 2-pixel column grid so black/white transitions never
     # split a pair (which the IT8951 renders as a faint echo on the odd column).
-    pil_image = snap_to_2px_grid(pil_image)
+    # Grayscale/GC16 only: in b/w mode we render via DU (1-bit, fully driven —
+    # there is no split-pair echo to correct), and the snap's min-rule squares
+    # rounded card corners and erodes white-on-black text, so skip it.
+    if not bw_mode:
+        pil_image = snap_to_2px_grid(pil_image)
     pil_image.save(str(tmp_path), "PNG")
 
     # Convert mm to px for border-smooth (partial-refresh area expansion)

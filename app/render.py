@@ -852,7 +852,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 # border traces the round. Clearing makes the rounded corners
                 # read against white for both the fill and the border.
                 draw.rectangle([bx0, by0, bx1, by1], fill=WHITE)
-                draw.rounded_rectangle([bx0, by0, bx1, by1], radius=3,
+                draw.rounded_rectangle([bx0, by0, bx1, by1], radius=8,
                                        fill=box_fill, outline=box_outline, width=2)
             else:
                 draw.rounded_rectangle([bx0, by0, bx1, by1], radius=6,
@@ -981,7 +981,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 # bold white text stays legible on black. Clear to white first so
                 # the rounded corners read against white, not the bar beneath.
                 draw.rectangle([bx0, fy0, bx1, fy1], fill=WHITE)
-                draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=3,
+                draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=8,
                                        fill=BLACK, outline=WHITE, width=2)
                 draw.text((xl + 6, ey - 1), display, fill=WHITE, font=_font_heavy(24))
             else:

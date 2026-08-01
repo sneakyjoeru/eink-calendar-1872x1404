@@ -163,23 +163,30 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         return True
 
     # ---- Regional differential update (only changed region + expansion border) ----
-    # Since the image is always thresholded to pure B/W (both grayscale and b/w
-    # modes), use DU mode for ALL regional updates. DU fully drives e-ink
-    # particles without creating white gaps in solid black strokes (unlike
-    # GL16/GC16 which can split vertical strokes). DU has no ghosting.
-    # "hard" mode still does a flash+GL16 for users who want the flash effect.
-    if update_mode == "hard":
-        regional_border = min(border_px, 24)
-        mode_flag = "--hard"
-    else:
-        # soft/du: always use DU (1-bit, no flash, no gaps, no ghosting)
+    # Keep the regional waveform CONSISTENT with the mode's full refresh so the
+    # same content never changes appearance between refresh types:
+    #   b/w mode       -> DU for EVERY regional update (1-bit, no flash, no
+    #                     ghosting, no stroke-splitting) — matches --du-fullscreen.
+    #   grayscale mode -> GL16 family, which renders the real gray levels —
+    #                     matches the GC16 full refresh: soft = GL16 (no flash),
+    #                     hard = flash + GL16.
+    # Grayscale content now carries real grays, so --du would threshold a soft
+    # update to 1-bit and it would not match a full/hard refresh.
+    if bw_mode:
         regional_border = border_px
         mode_flag = "--du"
+        regional_repeats = 1
+    elif update_mode == "hard":
+        regional_border = min(border_px, 24)
+        mode_flag = "--hard"
+        regional_repeats = max(1, regional_hard_repeats)
+    else:  # soft (a "du" setting in grayscale falls back to soft — du would drop grays)
+        regional_border = border_px
+        mode_flag = "--soft"
+        regional_repeats = 1
     cmd = [binary, "--image", str(tmp_path),
            "--brightness", str(brightness),
            mode_flag, "--border-smooth", str(regional_border)]
-    # For hard regional mode, repeat the flash+draw cycle multiple times.
-    regional_repeats = max(1, regional_hard_repeats) if update_mode == "hard" else 1
     logger.info("Regional %s update (expansion=%dpx / %.1fmm, %dx)",
                 update_mode, regional_border, refresh_border_mm, regional_repeats)
     try:

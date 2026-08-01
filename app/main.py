@@ -804,6 +804,17 @@ _PRESETS = {
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
+    # Soft mode, 1-min time-line for live updates
+    "soft_live": {
+        "label": "Soft · Live (1-min)",
+        "desc": "Grayscale soft with 1-min time-line. Live updates, periodic full clear to fight darkening.",
+        "update_mode": "soft", "bw_mode": False, "dim_style": "normal",
+        "refresh_border_mm": 5, "time_line_interval_min": 1,
+        "full_refresh_interval_hours": 1, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
     # Hard mode, grayscale, flash on each change, thorough clears
     "hard_clean": {
         "label": "Hard · Clean",
@@ -815,11 +826,22 @@ _PRESETS = {
         "full_refresh_interval": 2, "full_refresh_event_end": 2,
         "full_refresh_manual": 2, "regional_hard_flashes": 2,
     },
-    # B/W DU mode — zero darkening, 1-bit, fastest updates
+    # B/W DU mode — zero darkening, 1-bit, fastest updates, checkerboard dim
     "bw_zero": {
-        "label": "B/W · Zero dirt",
-        "desc": "1-bit black/white mode with DU updates. Zero ghosting accumulation, fastest refresh.",
+        "label": "B/W · Zero dirt (checkerboard)",
+        "desc": "1-bit B/W with DU updates, checkerboard dim. Zero ghosting, fastest refresh.",
         "update_mode": "du", "bw_mode": True, "dim_style": "checkerboard",
+        "refresh_border_mm": 5, "time_line_interval_min": 1,
+        "full_refresh_interval_hours": 6, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    # B/W DU mode — zero darkening, solid dim (white fill + black border)
+    "bw_solid": {
+        "label": "B/W · Zero dirt (solid dim)",
+        "desc": "1-bit B/W with DU updates, solid white dim. Zero ghosting, cleanest look.",
+        "update_mode": "du", "bw_mode": True, "dim_style": "normal",
         "refresh_border_mm": 5, "time_line_interval_min": 1,
         "full_refresh_interval_hours": 6, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
@@ -829,7 +851,7 @@ _PRESETS = {
 }
 
 
-@app.post("/api/preset/{name}")
+@app.get("/api/preset/{name}")
 async def apply_preset(name: str):
     """Apply a preset configuration and trigger a render."""
     preset = _PRESETS.get(name)
@@ -1224,18 +1246,16 @@ input[type="range"] {{ width: 100%; }}
   <div class="card" style="flex:1;min-width:240px;max-width:400px">
     <h2>⚡ Presets</h2>
     <div class="field">
-      <button type="button" class="btn btn-small" style="display:block;width:100%;margin-bottom:8px;text-align:left"
-              onclick="if(confirm('Apply Soft · Clean preset? This overwrites your refresh settings.')) location.href='/api/preset/soft_clean'">
-        <b>Soft · Clean</b><br><span style="font-size:0.8em;color:var(--muted)">Grayscale, no flash, periodic full clear</span>
-      </button>
-      <button type="button" class="btn btn-small" style="display:block;width:100%;margin-bottom:8px;text-align:left"
-              onclick="if(confirm('Apply Hard · Clean preset? This overwrites your refresh settings.')) location.href='/api/preset/hard_clean'">
-        <b>Hard · Clean</b><br><span style="font-size:0.8em;color:var(--muted)">Grayscale with flash, thorough clears</span>
-      </button>
-      <button type="button" class="btn btn-small" style="display:block;width:100%;text-align:left"
-              onclick="if(confirm('Apply B/W · Zero dirt preset? This switches to 1-bit black/white mode with DU updates — no ghosting at all.')) location.href='/api/preset/bw_zero'">
-        <b>B/W · Zero dirt</b><br><span style="font-size:0.8em;color:var(--muted)">1-bit mode, DU updates, zero darkening</span>
-      </button>
+      <label>Choose a preset</label>
+      <select id="presetSelect" onchange="applyPreset()">
+        <option value="">— Select —</option>
+        <option value="soft_clean">Soft · Clean</option>
+        <option value="soft_live">Soft · Live (1-min)</option>
+        <option value="hard_clean">Hard · Clean</option>
+        <option value="bw_zero">B/W · Zero dirt (checkerboard)</option>
+        <option value="bw_solid">B/W · Zero dirt (solid dim)</option>
+      </select>
+      <div class="note" id="presetDesc" style="margin-top:6px"></div>
     </div>
   </div>
 </div>
@@ -1489,6 +1509,29 @@ input[type="range"] {{ width: 100%; }}
 </div>
 
 <script>
+var _presetDescs = {{
+  soft_clean: 'Grayscale, no flash, periodic full clear. Slight darkening over time, auto-cleared.',
+  soft_live: 'Grayscale soft with 1-min time-line. Live updates, periodic full clear to fight darkening.',
+  hard_clean: 'Grayscale with flash on each change. Minimal darkening, thorough clears.',
+  bw_zero: '1-bit B/W with DU updates, checkerboard dim. Zero ghosting, fastest refresh.',
+  bw_solid: '1-bit B/W with DU updates, solid white dim. Zero ghosting, cleanest look.'
+}};
+function applyPreset() {{
+  var sel = document.getElementById('presetSelect');
+  var desc = document.getElementById('presetDesc');
+  var val = sel.value;
+  if (val && _presetDescs[val]) {{
+    desc.textContent = _presetDescs[val];
+    if (confirm('Apply this preset? This overwrites your refresh settings.')) {{
+      location.href = '/api/preset/' + val;
+    }} else {{
+      sel.value = '';
+      desc.textContent = '';
+    }}
+  }} else {{
+    desc.textContent = '';
+  }}
+}}
 function updateTlWarning() {{
   var sel = document.getElementById('tlInterval');
   var warn = document.getElementById('tlWarning');

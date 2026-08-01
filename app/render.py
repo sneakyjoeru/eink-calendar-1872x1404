@@ -526,15 +526,22 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             fd_events_by_date.setdefault(d, []).append(ev)
 
     # Grid border
+    grid_border_color = BLACK if bw_mode else GRAY_LIGHT
     draw.rectangle([grid_x, grid_y, grid_x + days * col_w - 1, grid_y + grid_h - 1],
-                   outline=GRAY_LIGHT, width=1)
+                   outline=grid_border_color, width=1)
 
     # Hour lines + labels
     for h in range(ds_h, de_h + 1):
         y = grid_y + (h * 60 - ds_min) * minute_h
         if y > grid_y + grid_h:
             break
-        draw.line([(grid_x, y), (grid_x + days * col_w, y)], fill=GRAY_HOUR_LINE, width=1)
+        if bw_mode:
+            # Dotted hour lines in b/w mode (alternating B/W segments)
+            for dx in range(grid_x, grid_x + days * col_w, 4):
+                x2 = min(dx + 2, grid_x + days * col_w)
+                draw.line([(dx, y), (x2, y)], fill=BLACK, width=1)
+        else:
+            draw.line([(grid_x, y), (grid_x + days * col_w, y)], fill=GRAY_HOUR_LINE, width=1)
         if time_format == "12h":
             ampm = "AM" if h < 12 else "PM"
             h12 = h % 12
@@ -665,11 +672,15 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             is_dimmed = is_crossed or is_past
             if bw_mode:
                 if is_dimmed:
-                    # Dimmed in b/w: white fill + dotted border (or checkerboard)
+                    # Dimmed in b/w: white fill + black border (or checkerboard)
                     box_fill, box_outline = WHITE, BLACK
                 else:
-                    # Normal in b/w: solid black box
-                    box_fill, box_outline = BLACK, BLACK
+                    # Normal in b/w: solid black box. Use white border where
+                    # there's no overlap (inverted, stands out), black where
+                    # events overlap each other (clean separation).
+                    has_overlap = xl > x + 5  # shrunk = had overlaps
+                    box_fill = BLACK
+                    box_outline = BLACK if has_overlap else WHITE
             elif is_crossed:
                 box_fill, box_outline = WHITE, GRAY_DIM
             elif is_past:

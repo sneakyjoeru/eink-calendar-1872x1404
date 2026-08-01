@@ -231,17 +231,48 @@ def render_calendar(view_mode: str, events: list[dict],
 
 
 # ---- Header ----
-def _draw_header(draw: ImageDraw.ImageDraw, title: str, subtitle: str = ""):
+def _fullday_title_y(draw, title, title_font, events, start_date, max_full_day,
+                     default_y=20):
+    """Lift the header title so it clears a raised full-day bar.
+
+    In week/7-day views a column whose full-day-event count is 1 or 3 draws its
+    top bar up to ~y80 (above the header line) — which the tall title would
+    overlap. When that happens in the first 3 columns, center the title between
+    the top edge and the bar top. (Count 2 keeps the bar at the header line, so
+    no lift is needed.)"""
+    counts = {}
+    for ev in events:
+        if not ev.get("all_day"):
+            continue
+        d = ev["start"]
+        if isinstance(d, datetime.datetime):
+            d = d.date()
+        counts[d] = counts.get(d, 0) + 1
+    BAR_TOP = 80
+    raised = False
+    for i in range(3):
+        c = min(counts.get(start_date + datetime.timedelta(days=i), 0), max_full_day)
+        if c == 1 or c == 3:
+            raised = True
+            break
+    if not raised:
+        return default_y
+    th = _text_h(draw, title, title_font)
+    return max(2, (BAR_TOP - th) // 2)
+
+
+def _draw_header(draw: ImageDraw.ImageDraw, title: str, subtitle: str = "",
+                 title_y: int = 20):
     """Draw the page header with title (left) and subtitle (right)."""
     # Title
     font_title = _font(64, bold=True)
-    draw.text((MARGIN, 20), title, fill=BLACK, font=font_title)
+    draw.text((MARGIN, title_y), title, fill=BLACK, font=font_title)
 
-    # Subtitle (e.g. week number or date range)
+    # Subtitle (e.g. week number or date range) — kept aligned with the title
     if subtitle:
         font_sub = _font(36)
         sw = _text_w(draw, subtitle, font_sub)
-        draw.text((W - MARGIN - sw, 30), subtitle, fill=GRAY_DARK, font=font_sub)
+        draw.text((W - MARGIN - sw, title_y + 10), subtitle, fill=GRAY_DARK, font=font_sub)
 
     # Header separator line
     y = HEADER_H - 10
@@ -613,7 +644,9 @@ def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_f
     else:
         title = now.strftime("%B %d, %Y")
     week_num = now.isocalendar()[1]
-    _draw_header(draw, title, f"Week {week_num}")
+    week_start = now.date() - datetime.timedelta(days=now.date().weekday())
+    ty = _fullday_title_y(draw, title, _font(64, bold=True), events, week_start, max_full_day)
+    _draw_header(draw, title, f"Week {week_num}", title_y=ty)
 
     _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, date_format=date_format,
                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
@@ -626,7 +659,8 @@ def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_
         title = now.strftime(date_format)
     else:
         title = "Next 7 Days"
-    _draw_header(draw, title, f"Week {week_num}" if week_num else now.strftime("%a %b %d"))
+    ty = _fullday_title_y(draw, title, _font(64, bold=True), events, now.date(), max_full_day)
+    _draw_header(draw, title, f"Week {week_num}" if week_num else now.strftime("%a %b %d"), title_y=ty)
 
     _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format,
                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)

@@ -179,17 +179,22 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
         _last_events = events
         _last_events_hash = new_hash
 
-        if not force and not events_changed:
-            logger.debug("No event changes, skipping render")
-            return False
-
-        # Check for day change — force full refresh
+        # Check for day change FIRST — before the early-return for "no event
+        # changes". In week view, a day change within the same week fetches the
+        # same events, so events_changed would be False and the day change would
+        # never be detected if this check came after the early return. A day
+        # change must force a full clean refresh even when events are identical.
         global _last_render_date
         today_str = now.strftime("%Y-%m-%d")
-        if _last_render_date and _last_render_date != today_str:
+        day_changed = bool(_last_render_date and _last_render_date != today_str)
+        if day_changed:
             force_full = True
             logger.info("Day changed (%s → %s), forcing full refresh", _last_render_date, today_str)
         _last_render_date = today_str
+
+        if not force and not events_changed and not day_changed:
+            logger.debug("No event changes, skipping render")
+            return False
 
         # Optional: when "fullscreen refresh when events are dimmed" is enabled,
         # force a full clean refresh whenever the event set changes (an event

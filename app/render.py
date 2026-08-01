@@ -149,6 +149,7 @@ def render_calendar(view_mode: str, events: list[dict],
                     time_line_style: str = "dotted",
                     bw_mode: bool = False,
                     dim_style: str = "normal",
+                    show_descriptions: bool = True,
                     now: Optional[datetime.datetime] = None) -> Image.Image:
     """Render the full calendar view to a PIL Image.
 
@@ -177,10 +178,12 @@ def render_calendar(view_mode: str, events: list[dict],
     elif view_mode == "7days":
         week_num = now.isocalendar()[1]
         _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format, week_num=week_num,
-                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
+                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
+                      show_descriptions=show_descriptions)
     else:  # week (default)
         _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
-                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
+                     show_descriptions=show_descriptions)
 
     # Draw current-time line on week/7days views
     if view_mode in ("week", "7days") and show_time_line:
@@ -639,7 +642,7 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
             day_num += datetime.timedelta(days=1)
 
 
-def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal"):
+def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True):
     """Week view — 7 day columns with timed events stacked vertically."""
     if date_format:
         title = now.strftime(date_format)
@@ -651,11 +654,12 @@ def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_f
     _draw_header(draw, title, f"Week {week_num}", title_y=ty)
 
     _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, date_format=date_format,
-                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
+                     show_descriptions=show_descriptions)
 
 
 # ---- 7-days view (next 7 days starting today) ----
-def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, week_num=None, bw_mode=False, dim_style="normal"):
+def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, week_num=None, bw_mode=False, dim_style="normal", show_descriptions=True):
     """7-days view — starting from today, 7 consecutive day columns."""
     if date_format:
         title = now.strftime(date_format)
@@ -665,10 +669,11 @@ def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_
     _draw_header(draw, title, f"Week {week_num}" if week_num else now.strftime("%a %b %d"), title_y=ty)
 
     _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format,
-                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
+                     show_descriptions=show_descriptions)
 
 
-def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal"):
+def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True):
     """Shared day-grid renderer for week and 7-days views."""
     today = now.date()
 
@@ -933,7 +938,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 if render_lines:
                     render_lines.append(("", "spacer"))
                 render_lines.append((time_str, "time"))
-            desc = _clean_desc(ev.get("description", ""))
+            desc = _clean_desc(ev.get("description", "")) if show_descriptions else ""
             if desc:
                 if render_lines:
                     render_lines.append(("", "spacer"))

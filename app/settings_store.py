@@ -34,6 +34,7 @@ _DEFAULTS = {
     "date_format": "",            # strftime format: "" | "%B %Y" | "%B %d, %Y" | "%Y.%m.%d %a" | "%d %B %Y"
     "dim_past_events": False,     # dim past events on the display
     "crossed_event_dim": False,   # dim events when time line crosses them
+    "show_descriptions": True,    # show event descriptions under the title/time on cards
     "text_size_modifier": 0,      # global font size adjustment (+/- pixels)
 }
 

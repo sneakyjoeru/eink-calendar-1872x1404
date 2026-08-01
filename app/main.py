@@ -242,6 +242,7 @@ def do_render(force: bool = False, force_full: bool = False,
             time_line_style=settings.get("time_line_style", "dotted"),
             bw_mode=settings.get("bw_mode", False),
             dim_style=settings.get("dim_style", "normal"),
+            show_descriptions=settings.get("show_descriptions", True),
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
@@ -399,6 +400,11 @@ def background_loop():
                             crossed_event_dim=settings.get("crossed_event_dim", False),
                             dim_past_events=settings.get("dim_past_events", False),
                             text_size_modifier=settings.get("text_size_modifier", 0),
+                            show_time_line=settings.get("show_time_line", True),
+                            time_line_style=settings.get("time_line_style", "dotted"),
+                            bw_mode=settings.get("bw_mode", False),
+                            dim_style=settings.get("dim_style", "normal"),
+                            show_descriptions=settings.get("show_descriptions", True),
                             now=target_now,
                         )
                     finally:
@@ -415,7 +421,8 @@ def background_loop():
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                             force_full=False,
                                             update_mode=settings.get("update_mode", "soft"),
-                                            refresh_border_mm=settings.get("refresh_border_mm", 5))
+                                            refresh_border_mm=settings.get("refresh_border_mm", 5),
+                                            bw_mode=settings.get("bw_mode", False))
                     _last_time_line_render = time.time()
                     logger.info("Time-line regional update (1-min): prepared in %.1fs, landed at :%02d.%01d",
                                 prepare_time,
@@ -456,6 +463,11 @@ def background_loop():
                             crossed_event_dim=settings.get("crossed_event_dim", False),
                             dim_past_events=settings.get("dim_past_events", False),
                             text_size_modifier=settings.get("text_size_modifier", 0),
+                            show_time_line=settings.get("show_time_line", True),
+                            time_line_style=settings.get("time_line_style", "dotted"),
+                            bw_mode=settings.get("bw_mode", False),
+                            dim_style=settings.get("dim_style", "normal"),
+                            show_descriptions=settings.get("show_descriptions", True),
                             now=target_now,
                         )
                     finally:
@@ -473,7 +485,8 @@ def background_loop():
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                             force_full=False,
                                             update_mode=settings.get("update_mode", "soft"),
-                                            refresh_border_mm=settings.get("refresh_border_mm", 5))
+                                            refresh_border_mm=settings.get("refresh_border_mm", 5),
+                                            bw_mode=settings.get("bw_mode", False))
                     _last_time_line_render = time.time()
                     display_time = _last_time_line_render - display_start
                     logger.info("Time-line regional update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
@@ -739,6 +752,7 @@ async def settings_page(request: Request):
         sel_AB_d_Y=sel_AB_d_Y,
         dim_past='checked' if dim_past else '',
         crossed_dim='checked' if crossed_dim else '',
+        show_desc='checked' if s.get('show_descriptions', True) else '',
         ts_mod=ts_mod,
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
@@ -791,6 +805,7 @@ async def update_settings(request: Request):
         "date_format": fd.get("date_format", ""),
         "crossed_event_dim": fd.get("crossed_event_dim") == "1",
         "dim_past_events": fd.get("dim_past_events") == "1",
+        "show_descriptions": fd.get("show_descriptions") == "1",
         "text_size_modifier": int(fd.get("text_size_modifier", 0)),
         "selected_calendars": fd.getlist("selected_calendars"),
     }
@@ -1262,7 +1277,7 @@ input[type="range"] {{ width: 100%; }}
   <div class="card">
     <h2>⚡ Presets</h2>
     <div class="field">
-      <label>Choose a preset</label>
+      <label>Not sure? Start from a preset</label>
       <select id="presetSelect" onchange="applyPreset()">
         <option value="">— Select —</option>
         <option value="soft_clean">Soft · Clean</option>
@@ -1279,30 +1294,16 @@ input[type="range"] {{ width: 100%; }}
 <div class="settings-grid">
 
   <div class="card">
-    <h2>🎨 Display mode</h2>
-    <label class="check-row">
-      <input type="checkbox" name="bw_mode" value="1" {bw_mode}>
-      <span>B/W mode (1-bit black/white — eliminates darkening, use with DU updates)</span>
-    </label>
-    <div class="field">
-      <label>Dimmed event style (b/w mode)</label>
-      <select name="dim_style">
-        <option value="normal" {sel_ds_normal}>White fill + black border</option>
-        <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
-      </select>
+    <h2>🗓 Calendars</h2>
+    <div class="cal-grid">
+    {cal_checkboxes}
     </div>
-    <label class="check-row">
-      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
-      <span>Dim past days &amp; ended events</span>
-    </label>
-    <label class="check-row">
-      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
-      <span>Dim an event once the time line passes it</span>
-    </label>
+    {cal_error}
+    <p class="note">Leave all unchecked to show every calendar.</p>
   </div>
 
   <div class="card">
-    <h2>📅 View &amp; Layout</h2>
+    <h2>📅 View</h2>
     <div class="field">
       <label>View Mode</label>
       <select name="view_mode">
@@ -1321,26 +1322,11 @@ input[type="range"] {{ width: 100%; }}
         <option value="3" {sel_fd_3}>3</option>
       </select>
     </div>
-    <div class="row">
-      <div class="field"><label>Text size</label>
-        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8">
-        <div class="note">+ bigger, − smaller (px)</div>
-      </div>
-      <div class="field"><label>Brightness</label>
-        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}"
-               oninput="document.getElementById('brightVal').textContent=this.value">
-        <div class="note" style="text-align:center"><span class="range-val" id="brightVal">{brightness}</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>🗓 Calendars</h2>
-    <div class="cal-grid">
-    {cal_checkboxes}
-    </div>
-    {cal_error}
-    <p class="note">Leave all unchecked to show every calendar.</p>
+    <label class="check-row">
+      <input type="checkbox" name="show_descriptions" value="1" {show_desc}>
+      <span>Show event descriptions on cards</span>
+    </label>
+    <p class="note">Shown under the title/time when the event has one and there's room.</p>
   </div>
 
   <div class="card">
@@ -1384,7 +1370,7 @@ input[type="range"] {{ width: 100%; }}
   </div>
 
   <div class="card">
-    <h2>⏱ Time line</h2>
+    <h2>⏱ Current-time line</h2>
     <label class="check-row">
       <input type="checkbox" name="show_time_line" value="1" {show_time_line}>
       <span>Show current-time line</span>
@@ -1413,7 +1399,43 @@ input[type="range"] {{ width: 100%; }}
   </div>
 
   <div class="card">
-    <h2>🔄 Regional updates</h2>
+    <h2>🎨 Appearance</h2>
+    <div class="row">
+      <div class="field"><label>Brightness</label>
+        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}"
+               oninput="document.getElementById('brightVal').textContent=this.value">
+        <div class="note" style="text-align:center"><span class="range-val" id="brightVal">{brightness}</span></div>
+      </div>
+      <div class="field"><label>Text size</label>
+        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8">
+        <div class="note">+ bigger, − smaller (px)</div>
+      </div>
+    </div>
+    <label class="check-row">
+      <input type="checkbox" name="bw_mode" value="1" {bw_mode}>
+      <span>B/W mode (1-bit black/white — crisp, never darkens; pairs with DU updates)</span>
+    </label>
+    <h3>Dimming</h3>
+    <label class="check-row">
+      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
+      <span>Dim past days &amp; ended events</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
+      <span>Dim an event once the time line passes it</span>
+    </label>
+    <div class="field">
+      <label>Dimmed event style (b/w mode)</label>
+      <select name="dim_style">
+        <option value="normal" {sel_ds_normal}>White fill + black border</option>
+        <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🔧 Screen updates</h2>
+    <p class="note" style="margin-top:-8px;margin-bottom:12px">Advanced — most people can just use a Preset.</p>
     <div class="field">
       <label>Update style for small changes (time line, etc.)</label>
       <select name="update_mode">
@@ -1444,8 +1466,9 @@ input[type="range"] {{ width: 100%; }}
       </select>
       <div class="note">Flash+draw cycles when regional hard mode is active.</div>
     </div>
+    <h3>Syncing</h3>
     <div class="field">
-      <label>Check for new events every (seconds)</label>
+      <label>Check Google for new events every (seconds)</label>
       <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
       <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
     </div>
@@ -1453,6 +1476,7 @@ input[type="range"] {{ width: 100%; }}
 
   <div class="card">
     <h2>♻️ Full-screen refresh</h2>
+    <p class="note" style="margin-top:-8px;margin-bottom:12px">Advanced — clears ghosting by wiping the whole screen.</p>
     <div class="field">
       <label>Full-screen clean refresh</label>
       <select name="full_refresh_interval_hours">
@@ -1472,7 +1496,7 @@ input[type="range"] {{ width: 100%; }}
       <input type="checkbox" name="fullscreen_on_dim" value="1" {fullscreen_on_dim}>
       <span>Full-screen refresh when an event ends (clears dimming ghosting)</span>
     </label>
-    <h3>Hard refresh passes</h3>
+    <h3>Clean-refresh passes</h3>
     <div class="row">
       <div class="field"><label>Startup / deploy</label>
         <select name="full_refresh_deploy">

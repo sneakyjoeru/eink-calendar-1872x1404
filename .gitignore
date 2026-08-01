@@ -37,3 +37,5 @@ bin/c-driver/obj/
 # Stray root-level duplicates of src/ files (canonical copies live in bin/c-driver/src/)
 bin/c-driver/it8951_diff.c
 bin/c-driver/it8951_image.c
+# Nested standalone driver repo clone (separate repo, do not track here)
+it8951-epaper-c-orangepi-zero-2w/

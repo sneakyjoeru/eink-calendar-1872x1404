@@ -139,11 +139,13 @@ def render_calendar(view_mode: str, events: list[dict],
         ip_center = (title_right + sub_left) // 2
         draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
-    # In b/w mode, threshold the final image to pure 1-bit (black/white only)
-    # so the C driver can use DU mode without ghosting accumulation.
+    # In b/w mode, convert the final image to 1-bit using Floyd-Steinberg
+    # dithering. At 1872x1404 resolution, the 1px B/W dot pattern is almost
+    # indistinguishable from real grayscale, giving text a pseudo-antialiased
+    # look. DU mode can be used without ghosting accumulation since it's 1-bit.
     if bw_mode:
         gray = img.convert("L")
-        bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
+        bw = gray.convert("1", dither=Image.FLOYDSTEINBERG)
         img = bw.convert("RGB")
 
     return img
@@ -235,11 +237,27 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
             right_strong = col < 6 and next_day.month != day_num.month
             bottom_strong = week < num_weeks - 1 and next_week.month != day_num.month
             if right_strong or bottom_strong:
-                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
+                if bw_mode:
+                    draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=BLACK)
+                else:
+                    draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
                 if right_strong:
                     draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
                 if bottom_strong:
                     draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+            elif bw_mode:
+                # Dotted cell border in b/w mode (2x spacing: 2px dot, 6px gap)
+                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=BLACK)
+                # Overdraw non-month-boundary edges with dotted pattern (erase the solid
+                # line by drawing white gaps). 2x spacing = 2px black, 6px white.
+                if col < 6 and not right_strong:
+                    for dy in range(y, y + row_h, 8):
+                        y2 = min(dy + 6, y + row_h - 1)
+                        draw.line([(x + col_w - 1, dy), (x + col_w - 1, y2)], fill=WHITE, width=1)
+                if week < num_weeks - 1 and not bottom_strong:
+                    for dx in range(x, x + col_w, 8):
+                        x2 = min(dx + 6, x + col_w - 1)
+                        draw.line([(dx, y + row_h - 1), (x2, y + row_h - 1)], fill=WHITE, width=1)
             else:
                 draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
 
@@ -374,11 +392,24 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
             right_strong = col < 6 and next_day.month != day_num.month
             bottom_strong = week < num_weeks - 1 and next_week.month != day_num.month
             if right_strong or bottom_strong:
-                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
+                if bw_mode:
+                    draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=BLACK)
+                else:
+                    draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
                 if right_strong:
                     draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
                 if bottom_strong:
                     draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+            elif bw_mode:
+                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=BLACK)
+                if col < 6 and not right_strong:
+                    for dy in range(y, y + row_h, 8):
+                        y2 = min(dy + 6, y + row_h - 1)
+                        draw.line([(x + col_w - 1, dy), (x + col_w - 1, y2)], fill=WHITE, width=1)
+                if week < num_weeks - 1 and not bottom_strong:
+                    for dx in range(x, x + col_w, 8):
+                        x2 = min(dx + 6, x + col_w - 1)
+                        draw.line([(dx, y + row_h - 1), (x2, y + row_h - 1)], fill=WHITE, width=1)
             else:
                 draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
 

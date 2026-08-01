@@ -15,10 +15,19 @@ _DEFAULTS = {
     "time_line_interval_min": 15, # minutes between time-line updates
     "event_poll_interval_sec": 60,# seconds between event polls
     "full_refresh_interval_hours": 6, # hours between forced full refreshes (0 = never, only day change/event change)
-    "update_mode": "soft",       # "soft" (GL16 regional, no flash, old state preserved at border), "hard" (flash inner + GL16 region). Full-screen refresh is governed by force_full (day change/interval/dim-toggle/manual), not this setting.
-    "refresh_border_mm": 5,     # partial-refresh area expansion in mm (0 = none; old content kept in the border zone, only the inner changed area visibly updates)
-    "fullscreen_on_dim": False, # when True, force a full-screen clean refresh when the event set changes (events ending/starting) — clears dimming ghosting. Off by default.
-    "hard_refresh_count": 1,    # number of full-screen GC16 clean refresh passes for manual/interval/dim triggers (1-5). Day change uses 2, deploy uses 3 (fixed).
+    "update_mode": "soft",       # "soft" (GL16 regional, no flash), "hard" (flash inner + GL16), "du" (DU 1-bit, no flash, no ghosting — for b/w mode)
+    "refresh_border_mm": 5,     # partial-refresh area expansion in mm (0 = none; old content kept in the border zone)
+    "fullscreen_on_dim": False, # when True, force a full-screen clean refresh when the event set changes
+    "full_refresh_deploy": 3,   # number of GC16 clean refresh passes on startup/deploy (1-5)
+    "full_refresh_day_change": 2, # number of GC16 clean refresh passes on day change (1-5)
+    "full_refresh_interval": 1, # number of GC16 clean refresh passes on interval elapsed (1-5)
+    "full_refresh_event_end": 1, # number of GC16 clean refresh passes on event finish / fullscreen_on_dim (1-5)
+    "full_refresh_manual": 1,  # number of GC16 clean refresh passes on manual Save & Render (1-5)
+    "regional_hard_flashes": 1, # number of flash+draw cycles for regional hard mode updates (1-5)
+    "show_time_line": True,    # show the current-time line indicator on week/7days views
+    "time_line_style": "dotted", # "solid" (thick line), "dotted" (default), "wavy"
+    "bw_mode": False,          # b/w 1-bit mode: renders everything in black/white, thresholds the image so DU mode can be used (no ghosting/darkening)
+    "dim_style": "normal",     # "normal" (white fill + black border for dimmed) or "checkerboard" (1px B/W checkerboard pattern)
     "brightness": 1.4,            # gamma boost for e-ink
     "timezone": "",               # IANA timezone, empty = system default
     "time_format": "24h",         # "24h" or "12h"
@@ -46,6 +55,15 @@ def load() -> dict:
                 merged.pop("dither_border_mm", None)
             if merged.get("update_mode") in ("smooth", "fullscreen"):
                 merged["update_mode"] = "soft"
+            # Migrate legacy hard_refresh_count → full_refresh_manual/interval/event_end
+            if "hard_refresh_count" in merged:
+                hc = merged.pop("hard_refresh_count", 1)
+                if "full_refresh_manual" not in data:
+                    merged["full_refresh_manual"] = hc
+                if "full_refresh_interval" not in data:
+                    merged["full_refresh_interval"] = hc
+                if "full_refresh_event_end" not in data:
+                    merged["full_refresh_event_end"] = hc
             return merged
         except (json.JSONDecodeError, OSError):
             pass

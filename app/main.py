@@ -193,8 +193,9 @@ def do_render(force: bool = False, force_full: bool = False,
         day_changed = bool(_last_render_date and _last_render_date != today_str)
         if day_changed:
             force_full = True
-            full_refresh_repeats = 2  # day change: 2 full clean refreshes
-            logger.info("Day changed (%s → %s), forcing full refresh (2x)", _last_render_date, today_str)
+            full_refresh_repeats = max(1, int(settings.get("full_refresh_day_change", 2)))
+            logger.info("Day changed (%s → %s), forcing full refresh (%dx)",
+                        _last_render_date, today_str, full_refresh_repeats)
         _last_render_date = today_str
 
         if not force and not events_changed and not day_changed:
@@ -204,11 +205,10 @@ def do_render(force: bool = False, force_full: bool = False,
         # Optional: when "fullscreen refresh when events are dimmed" is enabled,
         # force a full clean refresh whenever the event set changes (an event
         # ended/started/disappeared). Off by default — regional updates handle
-        # the change without a full-screen flash. This is the opt-in replacement
-        # for the removed automatic "event finish" full refresh.
+        # the change without a full-screen flash.
         if not force_full and events_changed and settings.get("fullscreen_on_dim", False):
             force_full = True
-            full_refresh_repeats = max(1, int(settings.get("hard_refresh_count", 1)))
+            full_refresh_repeats = max(1, int(settings.get("full_refresh_event_end", 1)))
             logger.info("Events changed + fullscreen_on_dim enabled, forcing full refresh (%dx)",
                         full_refresh_repeats)
 
@@ -217,9 +217,14 @@ def do_render(force: bool = False, force_full: bool = False,
             full_interval = settings.get("full_refresh_interval_hours", 0)
             if full_interval and driver.needs_full_refresh(full_interval):
                 force_full = True
-                full_refresh_repeats = max(1, int(settings.get("hard_refresh_count", 1)))
+                full_refresh_repeats = max(1, int(settings.get("full_refresh_interval", 1)))
                 logger.info("Full refresh interval (%dh) elapsed, forcing full refresh (%dx)",
                             full_interval, full_refresh_repeats)
+
+        # If force_full was passed directly (startup/manual) and no trigger set
+        # the repeat count, use the deploy setting.
+        if force_full and full_refresh_repeats == 0:
+            full_refresh_repeats = max(1, int(settings.get("full_refresh_deploy", 3)))
 
         img = render.render_calendar(
             view_mode=settings["view_mode"],
@@ -233,13 +238,18 @@ def do_render(force: bool = False, force_full: bool = False,
             crossed_event_dim=settings.get("crossed_event_dim", False),
             dim_past_events=settings.get("dim_past_events", False),
             text_size_modifier=settings.get("text_size_modifier", 0),
+            show_time_line=settings.get("show_time_line", True),
+            time_line_style=settings.get("time_line_style", "dotted"),
+            bw_mode=settings.get("bw_mode", False),
+            dim_style=settings.get("dim_style", "normal"),
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                      force_full=force_full,
                                      update_mode=settings.get("update_mode", "soft"),
                                      refresh_border_mm=settings.get("refresh_border_mm", 5),
-                                     full_refresh_repeats=full_refresh_repeats)
+                                     full_refresh_repeats=full_refresh_repeats,
+                                     regional_hard_repeats=max(1, int(settings.get("regional_hard_flashes", 1))))
         if ok:
             _last_render_duration = time.time() - _render_start
             logger.info("Screen updated (events_changed=%s, %d events, %.1fs)",
@@ -498,8 +508,8 @@ async def startup():
     else:
         # Mandatory full-screen clean refresh on startup/deploy — clears any
         # ghosting residue and ensures the screen matches the current image.
-        # 3 passes by default for a thorough clean on deploy.
-        do_render(force=True, force_full=True, full_refresh_repeats=3)
+        # Pass count is auto-determined from the full_refresh_deploy setting.
+        do_render(force=True, force_full=True)
 
     # Start scheduler
     t = threading.Thread(target=background_loop, daemon=True)
@@ -643,6 +653,10 @@ async def settings_page(request: Request):
         um=s.get('update_mode', 'soft'),
         sel_um_smooth='selected' if s.get('update_mode', 'soft')=='soft' else '',
         sel_um_hard='selected' if s.get('update_mode', 'soft')=='hard' else '',
+        sel_um_du='selected' if s.get('update_mode', 'soft')=='du' else '',
+        bw_mode='checked' if s.get('bw_mode', False) else '',
+        sel_ds_normal='selected' if s.get('dim_style', 'normal')=='normal' else '',
+        sel_ds_checker='selected' if s.get('dim_style', 'normal')=='checkerboard' else '',
         db_mm=s.get('refresh_border_mm', 5),
         sel_db_0='selected' if s.get('refresh_border_mm', 5)==0 else '',
         sel_db_2='selected' if s.get('refresh_border_mm', 5)==2 else '',
@@ -651,11 +665,40 @@ async def settings_page(request: Request):
         sel_db_15='selected' if s.get('refresh_border_mm', 5)==15 else '',
         sel_db_20='selected' if s.get('refresh_border_mm', 5)==20 else '',
         fullscreen_on_dim='checked' if s.get('fullscreen_on_dim', False) else '',
-        sel_hrc_1='selected' if s.get('hard_refresh_count', 1)==1 else '',
-        sel_hrc_2='selected' if s.get('hard_refresh_count', 1)==2 else '',
-        sel_hrc_3='selected' if s.get('hard_refresh_count', 1)==3 else '',
-        sel_hrc_4='selected' if s.get('hard_refresh_count', 1)==4 else '',
-        sel_hrc_5='selected' if s.get('hard_refresh_count', 1)==5 else '',
+        show_time_line='checked' if s.get('show_time_line', True) else '',
+        sel_tl_style_solid='selected' if s.get('time_line_style', 'dotted')=='solid' else '',
+        sel_tl_style_dotted='selected' if s.get('time_line_style', 'dotted')=='dotted' else '',
+        sel_tl_style_wavy='selected' if s.get('time_line_style', 'dotted')=='wavy' else '',
+        sel_frd_1='selected' if s.get('full_refresh_deploy', 3)==1 else '',
+        sel_frd_2='selected' if s.get('full_refresh_deploy', 3)==2 else '',
+        sel_frd_3='selected' if s.get('full_refresh_deploy', 3)==3 else '',
+        sel_frd_4='selected' if s.get('full_refresh_deploy', 3)==4 else '',
+        sel_frd_5='selected' if s.get('full_refresh_deploy', 3)==5 else '',
+        sel_frdc_1='selected' if s.get('full_refresh_day_change', 2)==1 else '',
+        sel_frdc_2='selected' if s.get('full_refresh_day_change', 2)==2 else '',
+        sel_frdc_3='selected' if s.get('full_refresh_day_change', 2)==3 else '',
+        sel_frdc_4='selected' if s.get('full_refresh_day_change', 2)==4 else '',
+        sel_frdc_5='selected' if s.get('full_refresh_day_change', 2)==5 else '',
+        sel_fri_1='selected' if s.get('full_refresh_interval', 1)==1 else '',
+        sel_fri_2='selected' if s.get('full_refresh_interval', 1)==2 else '',
+        sel_fri_3='selected' if s.get('full_refresh_interval', 1)==3 else '',
+        sel_fri_4='selected' if s.get('full_refresh_interval', 1)==4 else '',
+        sel_fri_5='selected' if s.get('full_refresh_interval', 1)==5 else '',
+        sel_free_1='selected' if s.get('full_refresh_event_end', 1)==1 else '',
+        sel_free_2='selected' if s.get('full_refresh_event_end', 1)==2 else '',
+        sel_free_3='selected' if s.get('full_refresh_event_end', 1)==3 else '',
+        sel_free_4='selected' if s.get('full_refresh_event_end', 1)==4 else '',
+        sel_free_5='selected' if s.get('full_refresh_event_end', 1)==5 else '',
+        sel_frm_1='selected' if s.get('full_refresh_manual', 1)==1 else '',
+        sel_frm_2='selected' if s.get('full_refresh_manual', 1)==2 else '',
+        sel_frm_3='selected' if s.get('full_refresh_manual', 1)==3 else '',
+        sel_frm_4='selected' if s.get('full_refresh_manual', 1)==4 else '',
+        sel_frm_5='selected' if s.get('full_refresh_manual', 1)==5 else '',
+        sel_rhf_1='selected' if s.get('regional_hard_flashes', 1)==1 else '',
+        sel_rhf_2='selected' if s.get('regional_hard_flashes', 1)==2 else '',
+        sel_rhf_3='selected' if s.get('regional_hard_flashes', 1)==3 else '',
+        sel_rhf_4='selected' if s.get('regional_hard_flashes', 1)==4 else '',
+        sel_rhf_5='selected' if s.get('regional_hard_flashes', 1)==5 else '',
         sel_fd_0='selected' if s['max_full_day_events']==0 else '',
         sel_fd_1='selected' if s['max_full_day_events']==1 else '',
         sel_fd_2='selected' if s['max_full_day_events']==2 else '',
@@ -715,7 +758,16 @@ async def update_settings(request: Request):
         "update_mode": fd.get("update_mode", "soft"),
         "refresh_border_mm": float(fd.get("refresh_border_mm", 5)),
         "fullscreen_on_dim": fd.get("fullscreen_on_dim") == "1",
-        "hard_refresh_count": int(fd.get("hard_refresh_count", 1)),
+        "full_refresh_deploy": int(fd.get("full_refresh_deploy", 3)),
+        "full_refresh_day_change": int(fd.get("full_refresh_day_change", 2)),
+        "full_refresh_interval": int(fd.get("full_refresh_interval", 1)),
+        "full_refresh_event_end": int(fd.get("full_refresh_event_end", 1)),
+        "full_refresh_manual": int(fd.get("full_refresh_manual", 1)),
+        "regional_hard_flashes": int(fd.get("regional_hard_flashes", 1)),
+        "show_time_line": fd.get("show_time_line") == "1",
+        "time_line_style": fd.get("time_line_style", "dotted"),
+        "bw_mode": fd.get("bw_mode") == "1",
+        "dim_style": fd.get("dim_style", "normal"),
         "brightness": float(fd.get("brightness", 1.4)),
         "timezone": fd.get("timezone", ""),
         "time_format": fd.get("time_format", "24h"),
@@ -739,11 +791,61 @@ async def trigger_render():
     return RedirectResponse(url="/settings", status_code=303)
 
 
+# ---- Presets: curated setting combinations for common use cases ----
+_PRESETS = {
+    # Soft mode, grayscale, minimal darkening, periodic full clears
+    "soft_clean": {
+        "label": "Soft · Clean",
+        "desc": "Grayscale, no flash, periodic full clear. Slight darkening over time, auto-cleared.",
+        "update_mode": "soft", "bw_mode": False, "dim_style": "normal",
+        "refresh_border_mm": 5, "time_line_interval_min": 5,
+        "full_refresh_interval_hours": 2, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    # Hard mode, grayscale, flash on each change, thorough clears
+    "hard_clean": {
+        "label": "Hard · Clean",
+        "desc": "Grayscale with flash on each change. Minimal darkening, thorough clears.",
+        "update_mode": "hard", "bw_mode": False, "dim_style": "normal",
+        "refresh_border_mm": 2, "time_line_interval_min": 5,
+        "full_refresh_interval_hours": 3, "fullscreen_on_dim": True,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 2, "full_refresh_event_end": 2,
+        "full_refresh_manual": 2, "regional_hard_flashes": 2,
+    },
+    # B/W DU mode — zero darkening, 1-bit, fastest updates
+    "bw_zero": {
+        "label": "B/W · Zero dirt",
+        "desc": "1-bit black/white mode with DU updates. Zero ghosting accumulation, fastest refresh.",
+        "update_mode": "du", "bw_mode": True, "dim_style": "checkerboard",
+        "refresh_border_mm": 5, "time_line_interval_min": 1,
+        "full_refresh_interval_hours": 6, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+}
+
+
+@app.post("/api/preset/{name}")
+async def apply_preset(name: str):
+    """Apply a preset configuration and trigger a render."""
+    preset = _PRESETS.get(name)
+    if not preset:
+        return JSONResponse({"error": f"Unknown preset: {name}"}, status_code=404)
+    settings_store.update({k: v for k, v in preset.items() if k not in ("label", "desc")})
+    logger.info("Applied preset: %s (%s)", name, preset["label"])
+    threading.Thread(target=_safe_render, daemon=True).start()
+    return RedirectResponse(url="/settings?saved=1", status_code=303)
+
+
 def _safe_render():
     """Call do_render with full exception logging. Save & Render always does full hard refresh.
-    The number of full refresh passes is the user-configurable hard_refresh_count setting."""
+    The number of full refresh passes is the user-configurable full_refresh_manual setting."""
     settings = settings_store.load()
-    repeats = max(1, int(settings.get("hard_refresh_count", 1)))
+    repeats = max(1, int(settings.get("full_refresh_manual", 1)))
     logger.info("Manual render triggered (full hard refresh, %dx)", repeats)
     try:
         ok = do_render(force=True, force_full=True, full_refresh_repeats=repeats)
@@ -1010,7 +1112,9 @@ async def auth_exchange(code: str = Form(...)):
     """Exchange an authorization code for tokens."""
     ok, err = calendar_client.complete_auth(code)
     if ok:
-        do_render(force=True, force_full=True, full_refresh_repeats=3)
+        s = settings_store.load()
+        do_render(force=True, force_full=True,
+                 full_refresh_repeats=max(1, int(s.get("full_refresh_deploy", 3))))
         return {"ok": True}
     return JSONResponse({"error": err or "Code exchange failed"}, status_code=400)
 
@@ -1022,7 +1126,9 @@ async def auth_callback(code: str = ""):
     if code:
         ok, _ = calendar_client.complete_auth(code)
         if ok:
-            do_render(force=True, force_full=True, full_refresh_repeats=3)
+            s = settings_store.load()
+            do_render(force=True, force_full=True,
+                     full_refresh_repeats=max(1, int(s.get("full_refresh_deploy", 3))))
             return RedirectResponse(url="/settings?auth=success")
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;padding:40px;background:#1a1a2e;color:#eee">
@@ -1110,9 +1216,28 @@ input[type="range"] {{ width: 100%; }}
 {saved_html}
 
 <form id="settingsForm" action="/api/settings" method="POST">
-<div class="card" style="margin-bottom:16px">
-  <h2>🔐 Google Account</h2>
-  {auth_section}
+<div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+  <div class="card" style="flex:1;min-width:300px">
+    <h2>🔐 Google Account</h2>
+    {auth_section}
+  </div>
+  <div class="card" style="flex:1;min-width:240px;max-width:400px">
+    <h2>⚡ Presets</h2>
+    <div class="field">
+      <button type="button" class="btn btn-small" style="display:block;width:100%;margin-bottom:8px;text-align:left"
+              onclick="if(confirm('Apply Soft · Clean preset? This overwrites your refresh settings.')) location.href='/api/preset/soft_clean'">
+        <b>Soft · Clean</b><br><span style="font-size:0.8em;color:var(--muted)">Grayscale, no flash, periodic full clear</span>
+      </button>
+      <button type="button" class="btn btn-small" style="display:block;width:100%;margin-bottom:8px;text-align:left"
+              onclick="if(confirm('Apply Hard · Clean preset? This overwrites your refresh settings.')) location.href='/api/preset/hard_clean'">
+        <b>Hard · Clean</b><br><span style="font-size:0.8em;color:var(--muted)">Grayscale with flash, thorough clears</span>
+      </button>
+      <button type="button" class="btn btn-small" style="display:block;width:100%;text-align:left"
+              onclick="if(confirm('Apply B/W · Zero dirt preset? This switches to 1-bit black/white mode with DU updates — no ghosting at all.')) location.href='/api/preset/bw_zero'">
+        <b>B/W · Zero dirt</b><br><span style="font-size:0.8em;color:var(--muted)">1-bit mode, DU updates, zero darkening</span>
+      </button>
+    </div>
+  </div>
 </div>
 
 <div class="settings-grid">
@@ -1201,7 +1326,7 @@ input[type="range"] {{ width: 100%; }}
     <h3>Live time line</h3>
     <div class="field">
       <label>Move the time line every</label>
-      <select name="time_line_interval_min">
+      <select name="time_line_interval_min" id="tlInterval" onchange="updateTlWarning()">
         <option value="1" {sel_tl_1}>1 minute</option>
         <option value="5" {sel_tl_5}>5 minutes</option>
         <option value="10" {sel_tl_10}>10 minutes</option>
@@ -1210,6 +1335,7 @@ input[type="range"] {{ width: 100%; }}
         <option value="60" {sel_tl_60}>1 hour</option>
       </select>
       <div class="note">Only used in Week &amp; 7-day views. Each tick is a small regional refresh.</div>
+      <div class="note" id="tlWarning" style="display:none;color:#f59e0b;margin-top:4px">⚠️ Intervals under 30 minutes cause frequent regional updates that can slowly darken the screen over time. Use a full-screen clean refresh periodically to clear this.</div>
     </div>
   </div>
 
@@ -1231,10 +1357,22 @@ input[type="range"] {{ width: 100%; }}
     <div class="field">
       <label>Update style for small changes (time line, etc.)</label>
       <select name="update_mode">
-        <option value="soft" {sel_um_smooth}>Soft · no flash, keeps old state at edges (recommended)</option>
+        <option value="soft" {sel_um_smooth}>Soft · no flash, GL16 (may darken over time)</option>
         <option value="hard" {sel_um_hard}>Hard · brief flash of the changed area</option>
+        <option value="du" {sel_um_du}>DU · 1-bit, no flash, zero darkening (requires b/w mode)</option>
       </select>
-      <div class="note">Both refresh only the small changed region. Soft keeps the previous pixels around the change (no flash); Hard briefly flashes the changed area. Full-screen clean refreshes happen on day change or the interval below.</div>
+      <div class="note">Soft uses GL16 which accumulates ghosting — use periodic full refreshes to clear. DU fully drives e-ink particles with no ghosting — enable b/w mode below for best results.</div>
+    </div>
+    <label class="check-row">
+      <input type="checkbox" name="bw_mode" value="1" {bw_mode}>
+      <span>B/W mode (1-bit black/white — eliminates darkening, use with DU updates)</span>
+    </label>
+    <div class="field">
+      <label>Dimmed event style (b/w mode)</label>
+      <select name="dim_style">
+        <option value="normal" {sel_ds_normal}>White fill + black border</option>
+        <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
+      </select>
     </div>
     <div class="field">
       <label>Partial refresh area expansion</label>
@@ -1267,16 +1405,74 @@ input[type="range"] {{ width: 100%; }}
       <input type="checkbox" name="fullscreen_on_dim" value="1" {fullscreen_on_dim}>
       <span>Full-screen refresh when an event ends (clears dimming ghosting)</span>
     </label>
+    <h3>Hard refresh passes</h3>
+    <div class="row">
+      <div class="field">
+        <label>Startup / deploy</label>
+        <select name="full_refresh_deploy">
+          <option value="1" {sel_frd_1}>1</option><option value="2" {sel_frd_2}>2</option>
+          <option value="3" {sel_frd_3}>3</option><option value="4" {sel_frd_4}>4</option>
+          <option value="5" {sel_frd_5}>5</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Day change</label>
+        <select name="full_refresh_day_change">
+          <option value="1" {sel_frdc_1}>1</option><option value="2" {sel_frdc_2}>2</option>
+          <option value="3" {sel_frdc_3}>3</option><option value="4" {sel_frdc_4}>4</option>
+          <option value="5" {sel_frdc_5}>5</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Interval</label>
+        <select name="full_refresh_interval">
+          <option value="1" {sel_fri_1}>1</option><option value="2" {sel_fri_2}>2</option>
+          <option value="3" {sel_fri_3}>3</option><option value="4" {sel_fri_4}>4</option>
+          <option value="5" {sel_fri_5}>5</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Event end / dimming</label>
+        <select name="full_refresh_event_end">
+          <option value="1" {sel_free_1}>1</option><option value="2" {sel_free_2}>2</option>
+          <option value="3" {sel_free_3}>3</option><option value="4" {sel_free_4}>4</option>
+          <option value="5" {sel_free_5}>5</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Save &amp; Render (manual)</label>
+        <select name="full_refresh_manual">
+          <option value="1" {sel_frm_1}>1</option><option value="2" {sel_frm_2}>2</option>
+          <option value="3" {sel_frm_3}>3</option><option value="4" {sel_frm_4}>4</option>
+          <option value="5" {sel_frm_5}>5</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Regional hard flashes</label>
+        <select name="regional_hard_flashes">
+          <option value="1" {sel_rhf_1}>1</option><option value="2" {sel_rhf_2}>2</option>
+          <option value="3" {sel_rhf_3}>3</option><option value="4" {sel_rhf_4}>4</option>
+          <option value="5" {sel_rhf_5}>5</option>
+        </select>
+        <div class="note">Flash+draw cycles when regional hard mode is active.</div>
+      </div>
+    </div>
+    <h3>Time line</h3>
+    <label class="check-row">
+      <input type="checkbox" name="show_time_line" value="1" {show_time_line}>
+      <span>Show current-time line</span>
+    </label>
     <div class="field">
-      <label>Full-screen refresh passes (manual / interval / event-end)</label>
-      <select name="hard_refresh_count">
-        <option value="1" {sel_hrc_1}>1 pass (quick)</option>
-        <option value="2" {sel_hrc_2}>2 passes</option>
-        <option value="3" {sel_hrc_3}>3 passes (thorough)</option>
-        <option value="4" {sel_hrc_4}>4 passes</option>
-        <option value="5" {sel_hrc_5}>5 passes (deepest clean)</option>
+      <label>Time-line style</label>
+      <select name="time_line_style">
+        <option value="solid" {sel_tl_style_solid}>Solid thick line</option>
+        <option value="dotted" {sel_tl_style_dotted}>Dotted (default)</option>
+        <option value="wavy" {sel_tl_style_wavy}>Wavy</option>
       </select>
-      <div class="note">How many GC16 clean-refresh passes for manual Save &amp; Render, the interval, and event-end triggers. Day change always uses 2; startup/deploy always uses 3.</div>
     </div>
     <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:10px">🖼 Preview the screen live</a>
   </div>
@@ -1293,6 +1489,14 @@ input[type="range"] {{ width: 100%; }}
 </div>
 
 <script>
+function updateTlWarning() {{
+  var sel = document.getElementById('tlInterval');
+  var warn = document.getElementById('tlWarning');
+  if (sel && warn) {{
+    warn.style.display = (parseInt(sel.value) < 30) ? 'block' : 'none';
+  }}
+}}
+updateTlWarning();
 async function startGoogleAuth() {{
   const status = document.getElementById('authStatus');
   status.textContent = 'Getting authorization link...';

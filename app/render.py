@@ -75,10 +75,18 @@ def render_calendar(view_mode: str, events: list[dict],
                     crossed_event_dim: bool = False,
                     dim_past_events: bool = False,
                     text_size_modifier: int = 0,
+                    show_time_line: bool = True,
+                    time_line_style: str = "dotted",
+                    bw_mode: bool = False,
+                    dim_style: str = "normal",
                     now: Optional[datetime.datetime] = None) -> Image.Image:
     """Render the full calendar view to a PIL Image.
 
     Returns an RGB image (will be converted to grayscale by the C driver).
+    bw_mode: when True, render in 1-bit (black/white only) and threshold the
+             final image so DU mode can be used without ghosting accumulation.
+    dim_style: "normal" (white fill + dotted border) or "checkerboard" (1px
+               alternating B/W pattern fill for dimmed events).
     """
     global _SIZE_MODIFIER
     _SIZE_MODIFIER = text_size_modifier
@@ -93,20 +101,21 @@ def render_calendar(view_mode: str, events: list[dict],
     de_h, de_m = (int(x) for x in day_end.split(":"))
 
     if view_mode == "month":
-        _render_month(draw, events, now, max_full_day, date_format=date_format, dim_past_events=dim_past_events)
+        _render_month(draw, events, now, max_full_day, date_format=date_format, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
     elif view_mode == "35days":
-        _render_35days(draw, events, now, max_full_day, date_format=date_format, dim_past_events=dim_past_events)
+        _render_35days(draw, events, now, max_full_day, date_format=date_format, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
     elif view_mode == "7days":
         week_num = now.isocalendar()[1]
         _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format, week_num=week_num,
-                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
+                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
     else:  # week (default)
         _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
-                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
 
     # Draw current-time line on week/7days views
-    if view_mode in ("week", "7days"):
-        _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_format)
+    if view_mode in ("week", "7days") and show_time_line:
+        _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_format,
+                        style=time_line_style)
 
     # Settings URL (centered between title and subtitle on header line)
     if settings_url:
@@ -130,6 +139,13 @@ def render_calendar(view_mode: str, events: list[dict],
         ip_center = (title_right + sub_left) // 2
         draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
+    # In b/w mode, threshold the final image to pure 1-bit (black/white only)
+    # so the C driver can use DU mode without ghosting accumulation.
+    if bw_mode:
+        gray = img.convert("L")
+        bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
+        img = bw.convert("RGB")
+
     return img
 
 
@@ -152,7 +168,7 @@ def _draw_header(draw: ImageDraw.ImageDraw, title: str, subtitle: str = ""):
 
 
 # ---- Month view ----
-def _render_month(draw, events, now, max_full_day, date_format="", dim_past_events=False):
+def _render_month(draw, events, now, max_full_day, date_format="", dim_past_events=False, bw_mode=False, dim_style="normal"):
     """Month grid view — weeks as rows, days as columns."""
     if date_format:
         title = now.strftime(date_format)
@@ -300,7 +316,7 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
             day_num += datetime.timedelta(days=1)
 
 
-def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_events=False):
+def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_events=False, bw_mode=False, dim_style="normal"):
     """35-days view — 5 weeks starting from current week's Monday.
 
     Shows a month-like grid with the current week as the top row.
@@ -433,7 +449,7 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
             day_num += datetime.timedelta(days=1)
 
 
-def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False):
+def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal"):
     """Week view — 7 day columns with timed events stacked vertically."""
     if date_format:
         title = now.strftime(date_format)
@@ -443,11 +459,11 @@ def _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_f
     _draw_header(draw, title, f"Week {week_num}")
 
     _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, date_format=date_format,
-                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
 
 
 # ---- 7-days view (next 7 days starting today) ----
-def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, week_num=None):
+def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, week_num=None, bw_mode=False, dim_style="normal"):
     """7-days view — starting from today, 7 consecutive day columns."""
     if date_format:
         title = now.strftime(date_format)
@@ -456,10 +472,10 @@ def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_
     _draw_header(draw, title, f"Week {week_num}" if week_num else now.strftime("%a %b %d"))
 
     _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format,
-                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events)
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style)
 
 
-def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False):
+def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal"):
     """Shared day-grid renderer for week and 7-days views."""
     today = now.date()
 
@@ -646,7 +662,15 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min = info
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
             is_past = dim_past_events and (d < today or (d == today and e_min <= now_min_total))
-            if is_crossed:
+            is_dimmed = is_crossed or is_past
+            if bw_mode:
+                if is_dimmed:
+                    # Dimmed in b/w: white fill + dotted border (or checkerboard)
+                    box_fill, box_outline = WHITE, BLACK
+                else:
+                    # Normal in b/w: solid black box
+                    box_fill, box_outline = BLACK, BLACK
+            elif is_crossed:
                 box_fill, box_outline = WHITE, GRAY_DIM
             elif is_past:
                 box_fill, box_outline = WHITE, GRAY_LIGHT
@@ -654,6 +678,14 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 box_fill, box_outline = GRAY_VLIGHT, BLACK
             draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
                                    fill=box_fill, outline=box_outline, width=2)
+            # Checkerboard dim: 1px alternating B/W pattern inside dimmed boxes
+            if bw_mode and is_dimmed and dim_style == "checkerboard":
+                for cy in range(int(ey_top) + 2, int(ey_top + eh - 1), 1):
+                    for cx in range(int(xl) + 2, int(xr) - 1, 1):
+                        if (cx + cy) % 2 == 0:
+                            draw.point((cx, cy), fill=BLACK)
+                        else:
+                            draw.point((cx, cy), fill=WHITE)
 
         # Draw text: line-by-line, skipping only lines fully inside overlap zones
         line_h = 26
@@ -684,7 +716,17 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
             is_past = dim_past_events and (d < today or (d == today and e_min <= now_min_total))
-            text_fill = GRAY_MID if (is_crossed or is_past) else BLACK
+            is_dimmed = is_crossed or is_past
+            if bw_mode:
+                if is_dimmed:
+                    # Dimmed: white/checkerboard bg → black text (with white outline
+                    # for checkerboard so text is readable on both B and W pixels)
+                    text_fill = BLACK
+                else:
+                    # Normal: black box → white text
+                    text_fill = WHITE
+            else:
+                text_fill = GRAY_MID if is_dimmed else BLACK
 
             y = ey_top + 4
             for text, is_time in render_lines:
@@ -704,6 +746,11 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         break
                 if y + line_h > ey_bot - 4:
                     break  # No room
+                # For checkerboard-dimmed events, draw a white outline behind
+                # the black text so it's readable on both B and W checker pixels
+                if bw_mode and is_dimmed and dim_style == "checkerboard":
+                    for ox, oy in [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]:
+                        draw.text((txt_x + ox, y + oy), text, fill=WHITE, font=event_font)
                 draw.text((txt_x, y), text, fill=text_fill, font=event_font)
                 y += line_h
 
@@ -735,9 +782,14 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             avail_fd_w = xr - xl - 8
             wrapped = _wrap_text_lines(draw, label, fd_font, avail_fd_w)
             display = wrapped[0] if wrapped else label[:15]
-            draw.rounded_rectangle([xl, ey - 2, xr, ey + fd_h - 2], radius=6,
-                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
-            draw.text((xl + 6, ey - 1), display, fill=BLACK, font=fd_font)
+            if bw_mode:
+                draw.rounded_rectangle([xl, ey - 2, xr, ey + fd_h - 2], radius=6,
+                                       fill=BLACK, outline=BLACK, width=2)
+                draw.text((xl + 6, ey - 1), display, fill=WHITE, font=fd_font)
+            else:
+                draw.rounded_rectangle([xl, ey - 2, xr, ey + fd_h - 2], radius=6,
+                                       fill=GRAY_VLIGHT, outline=BLACK, width=2)
+                draw.text((xl + 6, ey - 1), display, fill=BLACK, font=fd_font)
 
 
 def _wrap_text_lines(draw, text, font, max_w):
@@ -817,10 +869,11 @@ def _ev_end_time_str(ev: dict, now: datetime.datetime) -> str:
 
 
 # ---- Current-time line ----
-def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_format="24h"):
+def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_format="24h",
+                     style="dotted"):
     """Draw a horizontal line at the current time position.
 
-    2px black line with 1px white outline. Only drawn on the current day's column.
+    style: "solid" (thick 4px line), "dotted" (striped, default), "wavy"
     """
     if view_mode == "week":
         today = now.date()
@@ -901,17 +954,38 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
 
     y = grid_y + (now_min - ds_min) * minute_h
 
-    # Striped time-line (same style as placeholder indicators)
-    stripe_w = 6
-    # White outline above and below
-    for sx in range(int(x_start), int(x_end), stripe_w * 2):
-        x2 = min(sx + stripe_w, x_end)
-        draw.rectangle([sx, y - 4, x2, y - 2], fill=WHITE)
-        draw.rectangle([sx, y + 3, x2, y + 5], fill=WHITE)
-    # Black striped line
-    for sx in range(int(x_start), int(x_end), stripe_w * 2):
-        x2 = min(sx + stripe_w, x_end)
-        draw.rectangle([sx, y - 2, x2, y + 2], fill=BLACK)
+    # Draw the time line in the selected style
+    if style == "solid":
+        # Thick solid line with white outline
+        draw.line([(x_start, y), (x_end, y)], fill=BLACK, width=5)
+        draw.line([(x_start, y - 4), (x_end, y - 4)], fill=WHITE, width=1)
+        draw.line([(x_start, y + 4), (x_end, y + 4)], fill=WHITE, width=1)
+    elif style == "wavy":
+        # Wavy line: sine-like pattern using small rectangles
+        import math
+        wave_amp = 4
+        wave_period = 12
+        for sx in range(int(x_start), int(x_end)):
+            offset = int(wave_amp * math.sin((sx - x_start) / wave_period * 2 * math.pi))
+            draw.point((sx, y + offset), fill=BLACK)
+            draw.point((sx, y + offset - 1), fill=BLACK)
+        # White outline above/below
+        for sx in range(int(x_start), int(x_end), 2):
+            offset_top = int(wave_amp * math.sin((sx - x_start) / wave_period * 2 * math.pi))
+            draw.point((sx, y + offset_top - 3), fill=WHITE)
+            draw.point((sx, y + offset_top + 3), fill=WHITE)
+    else:
+        # Dotted/striped (default) — same style as placeholder indicators
+        stripe_w = 6
+        # White outline above and below
+        for sx in range(int(x_start), int(x_end), stripe_w * 2):
+            x2 = min(sx + stripe_w, x_end)
+            draw.rectangle([sx, y - 4, x2, y - 2], fill=WHITE)
+            draw.rectangle([sx, y + 3, x2, y + 5], fill=WHITE)
+        # Black striped line
+        for sx in range(int(x_start), int(x_end), stripe_w * 2):
+            x2 = min(sx + stripe_w, x_end)
+            draw.rectangle([sx, y - 2, x2, y + 2], fill=BLACK)
 
     # Small time label at the right edge of the line
     time_str = now.strftime("%H:%M")

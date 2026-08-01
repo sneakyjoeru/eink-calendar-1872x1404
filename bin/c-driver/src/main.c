@@ -329,14 +329,16 @@ static void usage(const char *prog)
     printf("  --set-vcom N          Set VCOM (millivolts, e.g. 2510 = -2.51V)\n");
     printf("  --hard                Regional hard refresh (white flash inner + GL16)\n");
     printf("  --soft                Regional soft refresh (GL16 only, no blink)\n");
+    printf("  --du                  Regional DU refresh (1-bit, no flash, no ghosting)\n");
     printf("  --fullscreen          Full-screen GC16 clean refresh (removes ghosting)\n");
     printf("  --border-smooth N     Border expansion in px for partial refresh (default: 20)\n");
     printf("\n");
-    printf("Regional update modes (--hard/--soft) compare the new image against\n");
+    printf("Regional update modes (--hard/--soft/--du) compare the new image against\n");
     printf("the last displayed image, find changed regions, expand by border-smooth\n");
     printf("pixels, keep the old content in the border zone (no dithering), and send\n");
-    printf("only the changed region to the display. --fullscreen does a full GC16\n");
-    printf("clean refresh. Use with --image.\n");
+    printf("only the changed region to the display. --du thresholds to 1-bit and uses\n");
+    printf("DU mode (no ghosting accumulation). --fullscreen does a full GC16 clean.\n");
+    printf("Use with --image.\n");
     printf("\n");
 }
 
@@ -376,13 +378,13 @@ int main(int argc, char *argv[])
         {"set-vcom",       required_argument, 0, 'v'},
         {"hard",           no_argument,       0, 'H'},
         {"soft",           no_argument,       0, 'O'},
+        {"du",             no_argument,       0, 'D'},
         {"fullscreen",     no_argument,       0, 'A'},
         {"border-smooth",  required_argument, 0, 'B'},
-        {"help",           no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "ict:f:F:m:b:gk::x::XVqsSp:v:HO B:h",
+    while ((opt = getopt_long(argc, argv, "ict:f:F:m:b:gk::x::XVqsSp:v:HODAB:h",
                               long_opts, NULL)) != -1) {
         switch (opt) {
             case 'i': do_info = 1; break;
@@ -404,6 +406,7 @@ int main(int argc, char *argv[])
             case 'v': set_vcom = atoi(optarg); break;
             case 'H': diff_mode = DIFF_MODE_HARD; break;
             case 'O': diff_mode = DIFF_MODE_SOFT; break;
+            case 'D': diff_mode = DIFF_MODE_DU; break;
             case 'A': diff_mode = DIFF_MODE_FULLSCREEN; break;
             case 'B': border_smooth = atoi(optarg); break;
             case 'h': usage(argv[0]); return 0;
@@ -456,7 +459,8 @@ int main(int argc, char *argv[])
         if (diff_mode >= 0) {
             printf("%s refresh (border-smooth=%d)\n",
                    diff_mode == DIFF_MODE_HARD ? "hard"
-                   : (diff_mode == DIFF_MODE_FULLSCREEN ? "fullscreen" : "soft"),
+                   : (diff_mode == DIFF_MODE_FULLSCREEN ? "fullscreen"
+                   : (diff_mode == DIFF_MODE_DU ? "du" : "soft")),
                    border_smooth);
             it8951_display_image_diff(&dev, image_path, 0, brightness,
                                       diff_mode, border_smooth);

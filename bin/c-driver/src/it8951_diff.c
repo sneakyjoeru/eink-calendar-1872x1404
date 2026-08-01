@@ -16,6 +16,9 @@
  *            the full expanded region (inner new + old border) with GL16.
  *            The flash is confined to the changed area; the border keeps the
  *            old content.
+ *   --du     DU 1-bit direct update. Thresholds the region to black/white and
+ *            sends with DU mode. Fully drives e-ink particles — NO ghosting
+ *            accumulation (unlike GL16). Best for 1-bit content (b/w mode).
  *   --fullscreen  Full-screen GC16 clean refresh (removes ghosting). Used for
  *            day change / interval / manual full refresh, not regional updates.
  *
@@ -224,10 +227,10 @@ int it8951_display_diff(it8951_t *dev, const uint8_t *new_data,
 
     /* Send to display — mode-specific */
     if (mode == DIFF_MODE_HARD) {
-        /* Hard refresh: white-flash the INNER changed region only (no border),
-           then draw the full expanded region (inner new + old border) with
-           GL16. The flash is confined to the changed area; the border keeps
-           the old content so only the inner area visibly updates. */
+        /* Hard refresh: flash the INNER changed region white (using GC16
+           full-clear cycle = visible flash), then draw the full expanded
+           region (inner new + old border) with GL16. The flash is confined
+           to the changed area; the border keeps the old content. */
         printf("diff: hard refresh (flash inner %d,%d %dx%d + GL16 border)\n",
                cx, cy, cw, ch);
 
@@ -244,18 +247,30 @@ int it8951_display_diff(it8951_t *dev, const uint8_t *new_data,
         if (inner_w % 2 != 0) inner_w--;
         if (inner_w < 2) inner_w = 2;
 
-        /* White-flash inner changed region */
-        uint8_t *white = malloc(inner_w * inner_h);
-        memset(white, 255, inner_w * inner_h);
-        it8951_display_8bpp(dev, white, inner_x, inner_y, inner_w, inner_h, GL16_MODE);
-        free(white);
+        /* Flash inner changed region white (0 = white on screen, GC16 = flash cycle) */
+        uint8_t *flash = malloc(inner_w * inner_h);
+        memset(flash, 0, inner_w * inner_h);  /* 0 → hardware shows white */
+        it8951_display_8bpp(dev, flash, inner_x, inner_y, inner_w, inner_h, GC16_MODE);
+        free(flash);
 
         /* Draw full expanded region (inner new + old border) with GL16 */
         it8951_display_8bpp(dev, region, rx, ry, rw, rh, GL16_MODE);
+    } else if (mode == DIFF_MODE_DU) {
+        /* DU refresh: 1-bit direct update. Fully drives e-ink particles to
+           target state — NO ghosting accumulation (unlike GL16). Best for
+           1-bit content (black lines/text on white). Threshold to B/W, send
+           with DU mode (mode 1). No flash, fast (~0.3s). */
+        printf("diff: DU refresh (1-bit, no flash, no ghosting)\n");
+        uint8_t *bw = malloc(rw * rh);
+        for (int i = 0; i < rw * rh; i++)
+            bw[i] = (region[i] < 128) ? 0 : 255;
+        it8951_display_8bpp(dev, bw, rx, ry, rw, rh, DU_MODE);
+        free(bw);
     } else {
         /* Soft refresh: GL16 mode, 16-level grayscale, NO blink, NO flash.
            The border keeps the old content, so only the inner changed area
-           visibly updates. */
+           visibly updates. NOTE: GL16 accumulates ghosting over time — use
+           DU mode for 1-bit content or periodic GC16 full refresh to clear. */
         printf("diff: soft refresh (GL16, no blink)\n");
         it8951_display_8bpp(dev, region, rx, ry, rw, rh, GL16_MODE);
     }

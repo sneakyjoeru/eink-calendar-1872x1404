@@ -40,7 +40,8 @@
 
 /* ---- Refresh modes ---- */
 #define INIT_MODE 0
-#define GLD16_MODE 1  /* Gray Low + Display — good for text */
+#define DU_MODE   1  /* Direct Update — 1-bit, no flash, no ghosting accumulation */
+#define GLD16_MODE 1  /* alias of DU_MODE (same value) */
 #define GC16_MODE 2
 #define GL16_MODE 3   /* Gray Low 16 — less ghosting, good for text */
 #define GLR16_MODE 4  /* Gray Low + Refresh */
@@ -126,12 +127,13 @@ void it8951_sleep(it8951_t *dev);
 /* Refresh modes for diff update */
 #define DIFF_MODE_SOFT       0   /* GL16 only, no blinking, no flash */
 #define DIFF_MODE_HARD       1   /* White-flash inner region then GL16 */
+#define DIFF_MODE_DU         5   /* DU 1-bit, no flash, no ghosting accumulation */
 #define DIFF_MODE_FULLSCREEN 3   /* GC16 full-screen clean refresh */
 
 /* Display with differential regional update.
    Compares new_data against last displayed image (stored at /tmp/it8951_last.png).
    Only sends changed region + border to display.
-   mode: DIFF_MODE_SOFT, DIFF_MODE_HARD, or DIFF_MODE_FULLSCREEN
+   mode: DIFF_MODE_SOFT, DIFF_MODE_HARD, DIFF_MODE_DU, or DIFF_MODE_FULLSCREEN
    border: pixels to expand the changed region (old content kept in the border
            zone; only the inner changed area is visually updated; default 20)
    threshold: pixel difference to detect change (default 5) */

@@ -33,7 +33,8 @@ PX_PER_MM = 11.85
 def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False,
                       smooth: bool = False, update_mode: str = "soft",
                       refresh_border_mm: float = 5,
-                      full_refresh_repeats: int = 1) -> bool:
+                      full_refresh_repeats: int = 1,
+                      regional_hard_repeats: int = 1) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
     update_mode: regional update flavour for non-full refreshes —
@@ -54,6 +55,9 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     full_refresh_repeats: how many times to run the full-screen GC16 clean
                 refresh when force_full is True. Multiple passes clear
                 ghosting more thoroughly (e.g. 3 on deploy, 2 on day change).
+    regional_hard_repeats: how many times to repeat the regional hard refresh
+                (flash + draw cycle) when update_mode is "hard". Each pass
+                flashes the changed region then redraws the content.
 
     Regional update principle: only the changed bounding box (+ an expansion
     border that keeps old pixels) is rewritten, so untouched screen area is
@@ -112,29 +116,36 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     # ---- Regional differential update (only changed region + expansion border) ----
     # soft:   GL16, no flash — border keeps old pixels (old state preserved).
     # hard:   white-flash the inner changed area, GL16 the region.
+    # du:     DU 1-bit, no flash, no ghosting — for b/w mode content.
     if update_mode == "hard":
-        # Keep the flash + region compact: cap the expansion for hard mode.
         regional_border = min(border_px, 24)
         mode_flag = "--hard"
+    elif update_mode == "du":
+        regional_border = border_px
+        mode_flag = "--du"
     else:  # "soft" (default)
         regional_border = border_px
         mode_flag = "--soft"
     cmd = [binary, "--image", str(tmp_path),
            "--brightness", str(brightness),
            mode_flag, "--border-smooth", str(regional_border)]
-    logger.info("Regional %s update (expansion=%dpx / %.1fmm)",
-                update_mode, regional_border, refresh_border_mm)
+    # For hard regional mode, repeat the flash+draw cycle multiple times.
+    regional_repeats = max(1, regional_hard_repeats) if update_mode == "hard" else 1
+    logger.info("Regional %s update (expansion=%dpx / %.1fmm, %dx)",
+                update_mode, regional_border, refresh_border_mm, regional_repeats)
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30
-        )
-        if result.returncode != 0:
-            logger.error("IT8951 driver error: %s", result.stderr[-500:])
-            return False
-        if result.stdout:
-            for line in result.stdout.strip().splitlines():
-                if line.startswith("diff:"):
-                    logger.info("Driver: %s", line)
+        for i in range(regional_repeats):
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=60
+            )
+            if result.returncode != 0:
+                logger.error("IT8951 driver error (pass %d/%d): %s",
+                             i + 1, regional_repeats, result.stderr[-500:])
+                return False
+            if result.stdout:
+                for line in result.stdout.strip().splitlines():
+                    if line.startswith("diff:"):
+                        logger.info("Driver: %s (pass %d/%d)", line, i + 1, regional_repeats)
         _last_render_time = time.time()
         if force_full or _last_full_refresh == 0.0:
             _last_full_refresh = _last_render_time

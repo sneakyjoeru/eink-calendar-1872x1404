@@ -291,7 +291,11 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
                         x2 = min(dx + 2, x + col_w - 1)
                         draw.line([(dx, y), (x2, y)], fill=BLACK, width=1)
             else:
-                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
+                # Non-bw, non-month-boundary: draw only RIGHT + BOTTOM edges
+                if col < 6:
+                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                if week < num_weeks - 1:
+                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
 
             # Day number
             in_month = day_num.month == today.month
@@ -454,7 +458,11 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
                         x2 = min(dx + 2, x + col_w - 1)
                         draw.line([(dx, y), (x2, y)], fill=BLACK, width=1)
             else:
-                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
+                # Non-bw, non-month-boundary: draw only RIGHT + BOTTOM edges
+                if col < 6:
+                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                if week < num_weeks - 1:
+                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
 
             # Day number
             is_today = day_num == today

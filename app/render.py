@@ -257,8 +257,10 @@ def _fullday_title_y(draw, title, title_font, events, start_date, max_full_day,
             break
     if not raised:
         return default_y
-    th = _text_h(draw, title, title_font)
-    return max(2, (BAR_TOP - th) // 2)
+    # Center the title's glyphs vertically in the band between the screen top
+    # edge (y=0) and the full-day card top edge (BAR_TOP).
+    bb = draw.textbbox((0, 0), title, font=title_font)
+    return max(0, int(round(BAR_TOP / 2 - (bb[1] + bb[3]) / 2)))
 
 
 def _draw_header(draw: ImageDraw.ImageDraw, title: str, subtitle: str = "",

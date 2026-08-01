@@ -139,11 +139,11 @@ def render_calendar(view_mode: str, events: list[dict],
         ip_center = (title_right + sub_left) // 2
         draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
-    # Ensure text letters have a solid black core: any pixel darker than 80
-    # (deep gray / black from font interior) is forced to pure black (0).
-    # Only the anti-aliased edge pixels (80-254, the gray "halo" around letters)
-    # remain as-is. This prevents the "printed twice / shifted shadow" look
-    # where the letter body and its AA edge create a visible double image.
+    # Ensure text letters have a solid black core: any pixel darker than 160
+    # is forced to pure black (0). Only the lightest AA edge pixels (160-254)
+    # remain as gray. This ensures thin letters like r, d, k, t have a solid
+    # black body with AA only at the very outer edge — preventing ghosting
+    # where partial-coverage gray pixels create a visible double image.
     if bw_mode:
         # b/w mode: convert to 1-bit. Hard threshold for strong text when no
         # dimming; Floyd-Steinberg dithering for AA when dimming is enabled.
@@ -154,10 +154,9 @@ def render_calendar(view_mode: str, events: list[dict],
             bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
         img = bw.convert("RGB")
     else:
-        # Grayscale mode: force deep-dark pixels to pure black (solid letter
-        # core) so AA only appears at edges, not inside the letter shape.
+        # Grayscale mode: force dark pixels to pure black (solid letter core)
         gray = img.convert("L")
-        gray = gray.point(lambda x: 0 if x < 80 else x, "L")
+        gray = gray.point(lambda x: 0 if x < 160 else x, "L")
         img = gray.convert("RGB")
 
     return img
@@ -258,18 +257,31 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
                 if bottom_strong:
                     draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
             elif bw_mode:
-                # Dotted cell border in b/w mode (2x spacing: 2px dot, 6px gap)
-                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=BLACK)
-                # Overdraw non-month-boundary edges with dotted pattern (erase the solid
-                # line by drawing white gaps). 2x spacing = 2px black, 6px white.
+                # Dotted cell border in b/w mode (2x spacing: 2px dot, 6px gap).
+                # Draw ONLY the dotted segments — no solid rectangle underneath
+                # (a solid line + white-gap erase leaves residual pixels = doubled look).
+                # Right edge (dotted vertical)
                 if col < 6 and not right_strong:
                     for dy in range(y, y + row_h, 8):
-                        y2 = min(dy + 6, y + row_h - 1)
-                        draw.line([(x + col_w - 1, dy), (x + col_w - 1, y2)], fill=WHITE, width=1)
+                        y2 = min(dy + 2, y + row_h - 1)
+                        draw.line([(x + col_w - 1, dy), (x + col_w - 1, y2)], fill=BLACK, width=1)
+                # Bottom edge (dotted horizontal)
                 if week < num_weeks - 1 and not bottom_strong:
                     for dx in range(x, x + col_w, 8):
-                        x2 = min(dx + 6, x + col_w - 1)
-                        draw.line([(dx, y + row_h - 1), (x2, y + row_h - 1)], fill=WHITE, width=1)
+                        x2 = min(dx + 2, x + col_w - 1)
+                        draw.line([(dx, y + row_h - 1), (x2, y + row_h - 1)], fill=BLACK, width=1)
+                # Left + top edges: only draw if this is the first cell (col=0/week=0)
+                # or the neighbor didn't draw its right/bottom (avoids double-drawing).
+                # Left edge of first column
+                if col == 0:
+                    for dy in range(y, y + row_h, 8):
+                        y2 = min(dy + 2, y + row_h - 1)
+                        draw.line([(x, dy), (x, y2)], fill=BLACK, width=1)
+                # Top edge of first row
+                if week == 0:
+                    for dx in range(x, x + col_w, 8):
+                        x2 = min(dx + 2, x + col_w - 1)
+                        draw.line([(dx, y), (x2, y)], fill=BLACK, width=1)
             else:
                 draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
 
@@ -413,15 +425,23 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
                 if bottom_strong:
                     draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
             elif bw_mode:
-                draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=BLACK)
+                # Dotted cell border — draw ONLY dots, no solid rectangle
                 if col < 6 and not right_strong:
                     for dy in range(y, y + row_h, 8):
-                        y2 = min(dy + 6, y + row_h - 1)
-                        draw.line([(x + col_w - 1, dy), (x + col_w - 1, y2)], fill=WHITE, width=1)
+                        y2 = min(dy + 2, y + row_h - 1)
+                        draw.line([(x + col_w - 1, dy), (x + col_w - 1, y2)], fill=BLACK, width=1)
                 if week < num_weeks - 1 and not bottom_strong:
                     for dx in range(x, x + col_w, 8):
-                        x2 = min(dx + 6, x + col_w - 1)
-                        draw.line([(dx, y + row_h - 1), (x2, y + row_h - 1)], fill=WHITE, width=1)
+                        x2 = min(dx + 2, x + col_w - 1)
+                        draw.line([(dx, y + row_h - 1), (x2, y + row_h - 1)], fill=BLACK, width=1)
+                if col == 0:
+                    for dy in range(y, y + row_h, 8):
+                        y2 = min(dy + 2, y + row_h - 1)
+                        draw.line([(x, dy), (x, y2)], fill=BLACK, width=1)
+                if week == 0:
+                    for dx in range(x, x + col_w, 8):
+                        x2 = min(dx + 2, x + col_w - 1)
+                        draw.line([(dx, y), (x2, y)], fill=BLACK, width=1)
             else:
                 draw.rectangle([x, y, x + col_w - 1, y + row_h - 1], outline=GRAY_LIGHT)
 

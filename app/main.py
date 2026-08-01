@@ -1258,19 +1258,26 @@ input[type="range"] {{ width: 100%; }}
   </div>
 
   <div class="card">
-    <h2>⚡ Presets</h2>
+    <h2>🎨 Display mode</h2>
+    <label class="check-row">
+      <input type="checkbox" name="bw_mode" value="1" {bw_mode}>
+      <span>B/W mode (1-bit black/white — eliminates darkening, use with DU updates)</span>
+    </label>
     <div class="field">
-      <label>Choose a preset</label>
-      <select id="presetSelect" onchange="applyPreset()">
-        <option value="">— Select —</option>
-        <option value="soft_clean">Soft · Clean</option>
-        <option value="soft_live">Soft · Live (1-min)</option>
-        <option value="hard_clean">Hard · Clean</option>
-        <option value="bw_zero">B/W · Zero dirt (checkerboard)</option>
-        <option value="bw_solid">B/W · Zero dirt (solid dim)</option>
+      <label>Dimmed event style (b/w mode)</label>
+      <select name="dim_style">
+        <option value="normal" {sel_ds_normal}>White fill + black border</option>
+        <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
       </select>
-      <div class="note" id="presetDesc" style="margin-top:6px"></div>
     </div>
+    <label class="check-row">
+      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
+      <span>Dim past days &amp; ended events</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
+      <span>Dim an event once the time line passes it</span>
+    </label>
   </div>
 
   <div class="card">
@@ -1385,26 +1392,19 @@ input[type="range"] {{ width: 100%; }}
   </div>
 
   <div class="card">
-    <h2>🎨 Display mode</h2>
-    <label class="check-row">
-      <input type="checkbox" name="bw_mode" value="1" {bw_mode}>
-      <span>B/W mode (1-bit black/white — eliminates darkening, use with DU updates)</span>
-    </label>
+    <h2>⚡ Presets</h2>
     <div class="field">
-      <label>Dimmed event style (b/w mode)</label>
-      <select name="dim_style">
-        <option value="normal" {sel_ds_normal}>White fill + black border</option>
-        <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
+      <label>Choose a preset</label>
+      <select id="presetSelect" onchange="applyPreset()">
+        <option value="">— Select —</option>
+        <option value="soft_clean">Soft · Clean</option>
+        <option value="soft_live">Soft · Live (1-min)</option>
+        <option value="hard_clean">Hard · Clean</option>
+        <option value="bw_zero">B/W · Zero dirt (checkerboard)</option>
+        <option value="bw_solid">B/W · Zero dirt (solid dim)</option>
       </select>
+      <div class="note" id="presetDesc" style="margin-top:6px"></div>
     </div>
-    <label class="check-row">
-      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
-      <span>Dim past days &amp; ended events</span>
-    </label>
-    <label class="check-row">
-      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
-      <span>Dim an event once the time line passes it</span>
-    </label>
   </div>
 
   <div class="card">

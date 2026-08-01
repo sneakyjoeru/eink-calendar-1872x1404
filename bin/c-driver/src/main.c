@@ -303,7 +303,82 @@ static int do_setup()
     return 0;
 }
 
-/* ---- Usage ---- */
+/* ---- Edge test: black squares at each corner with dotted borders ---- */
+static int do_edge_test(it8951_t *dev)
+{
+    int w = dev->info.panel_w;
+    int h = dev->info.panel_h;
+    int sq = 50;       /* square size */
+    int dot = 2;       /* dot size for dotted border */
+
+    /* Full-screen white background (0 = white on screen) */
+    uint8_t *canvas = malloc(w * h);
+    memset(canvas, 0, w * h);
+
+    /* Draw 50x50 black squares (255 = black on screen) at all 4 corners */
+    int positions[4][2] = {
+        {0, 0},           /* top-left */
+        {w - sq, 0},      /* top-right */
+        {0, h - sq},      /* bottom-left */
+        {w - sq, h - sq}, /* bottom-right */
+    };
+    for (int i = 0; i < 4; i++) {
+        int sx = positions[i][0];
+        int sy = positions[i][1];
+        for (int y = 0; y < sq; y++)
+            for (int x = 0; x < sq; x++)
+                canvas[(sy + y) * w + (sx + x)] = 255;
+    }
+
+    /* Draw dotted borders (2px black dots, 4px gaps) around each square */
+    for (int i = 0; i < 4; i++) {
+        int sx = positions[i][0];
+        int sy = positions[i][1];
+        /* Top edge */
+        for (int dx = -dot; dx < sq + dot; dx += dot * 3) {
+            int px = sx + dx;
+            if (px < 0 || px >= w) continue;
+            for (int dy = 0; dy < dot; dy++) {
+                int py = sy - dot - 1 + dy;
+                if (py >= 0 && py < h) canvas[py * w + px] = 255;
+            }
+        }
+        /* Bottom edge */
+        for (int dx = -dot; dx < sq + dot; dx += dot * 3) {
+            int px = sx + dx;
+            if (px < 0 || px >= w) continue;
+            for (int dy = 0; dy < dot; dy++) {
+                int py = sy + sq + dy;
+                if (py >= 0 && py < h) canvas[py * w + px] = 255;
+            }
+        }
+        /* Left edge */
+        for (int dy = -dot; dy < sq + dot; dy += dot * 3) {
+            int py = sy + dy;
+            if (py < 0 || py >= h) continue;
+            for (int dx2 = 0; dx2 < dot; dx2++) {
+                int px = sx - dot - 1 + dx2;
+                if (px >= 0 && px < w) canvas[py * w + px] = 255;
+            }
+        }
+        /* Right edge */
+        for (int dy = -dot; dy < sq + dot; dy += dot * 3) {
+            int py = sy + dy;
+            if (py < 0 || py >= h) continue;
+            for (int dx2 = 0; dx2 < dot; dx2++) {
+                int px = sx + sq + dx2;
+                if (px >= 0 && px < w) canvas[py * w + px] = 255;
+            }
+        }
+    }
+
+    printf("Displaying edge test (4x 50px black squares with dotted borders)...\n");
+    it8951_display_8bpp(dev, canvas, 0, 0, w, h, GC16_MODE);
+    printf("Done.\n");
+
+    free(canvas);
+    return 0;
+}
 
 static void usage(const char *prog)
 {
@@ -323,6 +398,7 @@ static void usage(const char *prog)
     printf("  --cross-invert        Invert cross colors (black bg)\n");
     printf("  --cross-vertical      Cross gradient: bottom-to-top\n");
     printf("  --quarter             Top-left quarter black\n");
+    printf("  --edge-test           4x 50px black squares at corners with dotted borders\n");
     printf("  --setup               Configure OS (overlay + packages)\n");
     printf("  --server              Start HTTP API server (port 8888)\n");
     printf("  --port N              Server port (default: 8888)\n");
@@ -348,7 +424,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     int do_info = 0, do_clear = 0, want_gradient = 0, do_quarter_flag = 0;
-    int do_setup_flag = 0, do_server = 0;
+    int do_setup_flag = 0, do_server = 0, do_edge_test_flag = 0;
     int checker = 0, cross = 0;
     int cross_invert = 0, cross_vertical = 0;
     int font_size = 48, port = 8888;
@@ -371,8 +447,7 @@ int main(int argc, char *argv[])
         {"cross",          optional_argument, 0, 'x'},
         {"cross-invert",   no_argument,       0, 'X'},
         {"cross-vertical", no_argument,       0, 'V'},
-        {"quarter",        no_argument,       0, 'q'},
-        {"setup",          no_argument,       0, 's'},
+        {"quarter",        no_argument,       0, 'q'},        {"edge-test",        no_argument,       0, 'e'},        {"setup",          no_argument,       0, 's'},
         {"server",         no_argument,       0, 'S'},
         {"port",           required_argument, 0, 'p'},
         {"set-vcom",       required_argument, 0, 'v'},
@@ -384,7 +459,7 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "ict:f:F:m:b:gk::x::XVqsSp:v:HODAB:h",
+    while ((opt = getopt_long(argc, argv, "ict:f:F:m:b:gk::x::XVqesSp:v:HODAB:h",
                               long_opts, NULL)) != -1) {
         switch (opt) {
             case 'i': do_info = 1; break;
@@ -400,6 +475,7 @@ int main(int argc, char *argv[])
             case 'X': cross_invert = 1; break;
             case 'V': cross_vertical = 1; break;
             case 'q': do_quarter_flag = 1; break;
+            case 'e': do_edge_test_flag = 1; break;
             case 's': do_setup_flag = 1; break;
             case 'S': do_server = 1; break;
             case 'p': port = atoi(optarg); break;
@@ -427,7 +503,7 @@ int main(int argc, char *argv[])
     }
 
     int has_action = do_clear || text || image_path || want_gradient ||
-                     checker || cross || do_quarter_flag || do_server;
+                     checker || cross || do_quarter_flag || do_edge_test_flag || do_server;
 
     if (do_info || !has_action) {
         uint16_t vcom = it8951_get_vcom(&dev);
@@ -481,6 +557,9 @@ int main(int argc, char *argv[])
 
     if (do_quarter_flag)
         do_quarter(&dev);
+
+    if (do_edge_test_flag)
+        do_edge_test(&dev);
 
     if (do_server) {
         printf("HTTP server not yet implemented in C version.\n");

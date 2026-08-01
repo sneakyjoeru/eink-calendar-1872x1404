@@ -139,13 +139,17 @@ def render_calendar(view_mode: str, events: list[dict],
         ip_center = (title_right + sub_left) // 2
         draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
-    # In b/w mode, convert the final image to 1-bit using Floyd-Steinberg
-    # dithering. At 1872x1404 resolution, the 1px B/W dot pattern is almost
-    # indistinguishable from real grayscale, giving text a pseudo-antialiased
-    # look. DU mode can be used without ghosting accumulation since it's 1-bit.
+    # In b/w mode, convert the final image to 1-bit.
+    # - No dimming: hard threshold → strong, crisp black text (no dithering/AA).
+    # - Dimming enabled (dim_past_events or crossed_event_dim): Floyd-Steinberg
+    #   dithering → keeps AA on dimmed/past event text for readability while
+    #   staying 1-bit for DU mode.
     if bw_mode:
         gray = img.convert("L")
-        bw = gray.convert("1", dither=Image.FLOYDSTEINBERG)
+        if dim_past_events or crossed_event_dim:
+            bw = gray.convert("1", dither=Image.FLOYDSTEINBERG)
+        else:
+            bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
         img = bw.convert("RGB")
 
     return img

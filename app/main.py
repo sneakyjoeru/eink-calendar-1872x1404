@@ -140,9 +140,13 @@ def _events_hash(events: list[dict]) -> str:
 
 # ---- Rendering pipeline ----
 
-def do_render(force: bool = False, force_full: bool = False) -> bool:
+def do_render(force: bool = False, force_full: bool = False,
+              full_refresh_repeats: int = 0) -> bool:
     """Fetch events + render + display. Thread-safe with timeout.
-    force_full: bypass diff, do full screen refresh."""
+    force_full: bypass diff, do full screen refresh.
+    full_refresh_repeats: number of full-screen GC16 clean refresh passes.
+        0 = auto-determine (2 for day change, user setting for interval/dim,
+        caller-specified for startup/manual)."""
     logger.info("do_render(force=%s) starting", force)
     _render_start = time.time()
     if not _render_lock.acquire(timeout=120):
@@ -189,7 +193,8 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
         day_changed = bool(_last_render_date and _last_render_date != today_str)
         if day_changed:
             force_full = True
-            logger.info("Day changed (%s → %s), forcing full refresh", _last_render_date, today_str)
+            full_refresh_repeats = 2  # day change: 2 full clean refreshes
+            logger.info("Day changed (%s → %s), forcing full refresh (2x)", _last_render_date, today_str)
         _last_render_date = today_str
 
         if not force and not events_changed and not day_changed:
@@ -203,14 +208,18 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
         # for the removed automatic "event finish" full refresh.
         if not force_full and events_changed and settings.get("fullscreen_on_dim", False):
             force_full = True
-            logger.info("Events changed + fullscreen_on_dim enabled, forcing full refresh")
+            full_refresh_repeats = max(1, int(settings.get("hard_refresh_count", 1)))
+            logger.info("Events changed + fullscreen_on_dim enabled, forcing full refresh (%dx)",
+                        full_refresh_repeats)
 
         # Check full refresh interval setting
         if not force_full:
             full_interval = settings.get("full_refresh_interval_hours", 0)
             if full_interval and driver.needs_full_refresh(full_interval):
                 force_full = True
-                logger.info("Full refresh interval (%dh) elapsed, forcing full refresh", full_interval)
+                full_refresh_repeats = max(1, int(settings.get("hard_refresh_count", 1)))
+                logger.info("Full refresh interval (%dh) elapsed, forcing full refresh (%dx)",
+                            full_interval, full_refresh_repeats)
 
         img = render.render_calendar(
             view_mode=settings["view_mode"],
@@ -229,7 +238,8 @@ def do_render(force: bool = False, force_full: bool = False) -> bool:
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                      force_full=force_full,
                                      update_mode=settings.get("update_mode", "soft"),
-                                     refresh_border_mm=settings.get("refresh_border_mm", 5))
+                                     refresh_border_mm=settings.get("refresh_border_mm", 5),
+                                     full_refresh_repeats=full_refresh_repeats)
         if ok:
             _last_render_duration = time.time() - _render_start
             logger.info("Screen updated (events_changed=%s, %d events, %.1fs)",
@@ -488,7 +498,8 @@ async def startup():
     else:
         # Mandatory full-screen clean refresh on startup/deploy — clears any
         # ghosting residue and ensures the screen matches the current image.
-        do_render(force=True, force_full=True)
+        # 3 passes by default for a thorough clean on deploy.
+        do_render(force=True, force_full=True, full_refresh_repeats=3)
 
     # Start scheduler
     t = threading.Thread(target=background_loop, daemon=True)
@@ -640,6 +651,11 @@ async def settings_page(request: Request):
         sel_db_15='selected' if s.get('refresh_border_mm', 5)==15 else '',
         sel_db_20='selected' if s.get('refresh_border_mm', 5)==20 else '',
         fullscreen_on_dim='checked' if s.get('fullscreen_on_dim', False) else '',
+        sel_hrc_1='selected' if s.get('hard_refresh_count', 1)==1 else '',
+        sel_hrc_2='selected' if s.get('hard_refresh_count', 1)==2 else '',
+        sel_hrc_3='selected' if s.get('hard_refresh_count', 1)==3 else '',
+        sel_hrc_4='selected' if s.get('hard_refresh_count', 1)==4 else '',
+        sel_hrc_5='selected' if s.get('hard_refresh_count', 1)==5 else '',
         sel_fd_0='selected' if s['max_full_day_events']==0 else '',
         sel_fd_1='selected' if s['max_full_day_events']==1 else '',
         sel_fd_2='selected' if s['max_full_day_events']==2 else '',
@@ -699,6 +715,7 @@ async def update_settings(request: Request):
         "update_mode": fd.get("update_mode", "soft"),
         "refresh_border_mm": float(fd.get("refresh_border_mm", 5)),
         "fullscreen_on_dim": fd.get("fullscreen_on_dim") == "1",
+        "hard_refresh_count": int(fd.get("hard_refresh_count", 1)),
         "brightness": float(fd.get("brightness", 1.4)),
         "timezone": fd.get("timezone", ""),
         "time_format": fd.get("time_format", "24h"),
@@ -723,10 +740,13 @@ async def trigger_render():
 
 
 def _safe_render():
-    """Call do_render with full exception logging. Save & Render always does full hard refresh."""
-    logger.info("Manual render triggered (full hard refresh)")
+    """Call do_render with full exception logging. Save & Render always does full hard refresh.
+    The number of full refresh passes is the user-configurable hard_refresh_count setting."""
+    settings = settings_store.load()
+    repeats = max(1, int(settings.get("hard_refresh_count", 1)))
+    logger.info("Manual render triggered (full hard refresh, %dx)", repeats)
     try:
-        ok = do_render(force=True, force_full=True)
+        ok = do_render(force=True, force_full=True, full_refresh_repeats=repeats)
         logger.info("Manual render completed: %s", ok)
     except Exception as e:
         logger.error("Manual render failed: %s", e)
@@ -990,7 +1010,7 @@ async def auth_exchange(code: str = Form(...)):
     """Exchange an authorization code for tokens."""
     ok, err = calendar_client.complete_auth(code)
     if ok:
-        do_render(force=True, force_full=True)
+        do_render(force=True, force_full=True, full_refresh_repeats=3)
         return {"ok": True}
     return JSONResponse({"error": err or "Code exchange failed"}, status_code=400)
 
@@ -1002,7 +1022,7 @@ async def auth_callback(code: str = ""):
     if code:
         ok, _ = calendar_client.complete_auth(code)
         if ok:
-            do_render(force=True, force_full=True)
+            do_render(force=True, force_full=True, full_refresh_repeats=3)
             return RedirectResponse(url="/settings?auth=success")
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;padding:40px;background:#1a1a2e;color:#eee">
@@ -1247,6 +1267,17 @@ input[type="range"] {{ width: 100%; }}
       <input type="checkbox" name="fullscreen_on_dim" value="1" {fullscreen_on_dim}>
       <span>Full-screen refresh when an event ends (clears dimming ghosting)</span>
     </label>
+    <div class="field">
+      <label>Full-screen refresh passes (manual / interval / event-end)</label>
+      <select name="hard_refresh_count">
+        <option value="1" {sel_hrc_1}>1 pass (quick)</option>
+        <option value="2" {sel_hrc_2}>2 passes</option>
+        <option value="3" {sel_hrc_3}>3 passes (thorough)</option>
+        <option value="4" {sel_hrc_4}>4 passes</option>
+        <option value="5" {sel_hrc_5}>5 passes (deepest clean)</option>
+      </select>
+      <div class="note">How many GC16 clean-refresh passes for manual Save &amp; Render, the interval, and event-end triggers. Day change always uses 2; startup/deploy always uses 3.</div>
+    </div>
     <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:10px">🖼 Preview the screen live</a>
   </div>
 </div>

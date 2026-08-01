@@ -18,6 +18,7 @@ _DEFAULTS = {
     "update_mode": "soft",       # "soft" (GL16 regional, no flash, old state preserved at border), "hard" (flash inner + GL16 region). Full-screen refresh is governed by force_full (day change/interval/dim-toggle/manual), not this setting.
     "refresh_border_mm": 5,     # partial-refresh area expansion in mm (0 = none; old content kept in the border zone, only the inner changed area visibly updates)
     "fullscreen_on_dim": False, # when True, force a full-screen clean refresh when the event set changes (events ending/starting) — clears dimming ghosting. Off by default.
+    "hard_refresh_count": 1,    # number of full-screen GC16 clean refresh passes for manual/interval/dim triggers (1-5). Day change uses 2, deploy uses 3 (fixed).
     "brightness": 1.4,            # gamma boost for e-ink
     "timezone": "",               # IANA timezone, empty = system default
     "time_format": "24h",         # "24h" or "12h"

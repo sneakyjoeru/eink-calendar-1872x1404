@@ -32,7 +32,8 @@ PX_PER_MM = 11.85
 
 def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False,
                       smooth: bool = False, update_mode: str = "soft",
-                      refresh_border_mm: float = 5) -> bool:
+                      refresh_border_mm: float = 5,
+                      full_refresh_repeats: int = 1) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
     update_mode: regional update flavour for non-full refreshes —
@@ -50,6 +51,9 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                 saves the diff cache for the next regional update. This is
                 the ONLY path that touches the whole screen; regional
                 updates never call it.
+    full_refresh_repeats: how many times to run the full-screen GC16 clean
+                refresh when force_full is True. Multiple passes clear
+                ghosting more thoroughly (e.g. 3 on deploy, 2 on day change).
 
     Regional update principle: only the changed bounding box (+ an expansion
     border that keeps old pixels) is rewritten, so untouched screen area is
@@ -72,27 +76,54 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     # ---- Full-screen clean refresh (day change / interval / dim toggle / manual) ----
     # --fullscreen makes the C driver do a full GC16 clean refresh and re-save
     # the diff cache, so the next regional update has a correct baseline.
+    # Multiple passes clear ghosting more thoroughly.
     if force_full:
+        repeats = max(1, full_refresh_repeats)
         cmd = [binary, "--image", str(tmp_path),
                "--brightness", str(brightness),
                "--fullscreen", "--border-smooth", "0"]
-        logger.info("Full screen GC16 clean refresh (forced)")
-    else:
-        # ---- Regional differential update (only changed region + expansion border) ----
-        # soft:   GL16, no flash — border keeps old pixels (old state preserved).
-        # hard:   white-flash the inner changed area, GL16 the region.
-        if update_mode == "hard":
-            # Keep the flash + region compact: cap the expansion for hard mode.
-            regional_border = min(border_px, 24)
-            mode_flag = "--hard"
-        else:  # "soft" (default)
-            regional_border = border_px
-            mode_flag = "--soft"
-        cmd = [binary, "--image", str(tmp_path),
-               "--brightness", str(brightness),
-               mode_flag, "--border-smooth", str(regional_border)]
-        logger.info("Regional %s update (expansion=%dpx / %.1fmm)",
-                    update_mode, regional_border, refresh_border_mm)
+        logger.info("Full screen GC16 clean refresh (forced, %dx)", repeats)
+        for i in range(repeats):
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=60
+                )
+                if result.returncode != 0:
+                    logger.error("IT8951 driver error (pass %d/%d): %s",
+                                 i + 1, repeats, result.stderr[-500:])
+                    return False
+                if result.stdout:
+                    for line in result.stdout.strip().splitlines():
+                        if line.startswith("diff:"):
+                            logger.info("Driver: %s (pass %d/%d)", line, i + 1, repeats)
+            except subprocess.TimeoutExpired:
+                logger.error("IT8951 driver timed out (pass %d/%d)", i + 1, repeats)
+                return False
+            except Exception as e:
+                logger.error("IT8951 driver exception (pass %d/%d): %s", i + 1, repeats, e)
+                return False
+        _last_render_time = time.time()
+        if force_full or _last_full_refresh == 0.0:
+            _last_full_refresh = _last_render_time
+        logger.info("Rendered to screen (%.1fs, %d full refresh passes)",
+                    time.time() - (_last_render_time - 0.001), repeats)
+        return True
+
+    # ---- Regional differential update (only changed region + expansion border) ----
+    # soft:   GL16, no flash — border keeps old pixels (old state preserved).
+    # hard:   white-flash the inner changed area, GL16 the region.
+    if update_mode == "hard":
+        # Keep the flash + region compact: cap the expansion for hard mode.
+        regional_border = min(border_px, 24)
+        mode_flag = "--hard"
+    else:  # "soft" (default)
+        regional_border = border_px
+        mode_flag = "--soft"
+    cmd = [binary, "--image", str(tmp_path),
+           "--brightness", str(brightness),
+           mode_flag, "--border-smooth", str(regional_border)]
+    logger.info("Regional %s update (expansion=%dpx / %.1fmm)",
+                update_mode, regional_border, refresh_border_mm)
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=30

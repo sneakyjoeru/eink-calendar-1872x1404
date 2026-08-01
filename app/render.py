@@ -738,6 +738,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         timed_events_by_date.setdefault(d, []).append(ev)
 
     event_font = _font(24)
+    event_bold = _font(24, bold=True)
     event_font_sm = _font(18)
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
@@ -803,12 +804,12 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     # Dimmed in b/w: white fill + black border (or checkerboard)
                     box_fill, box_outline = WHITE, BLACK
                 else:
-                    # Normal in b/w: solid black box. Use white border where
-                    # there's no overlap (inverted, stands out), black where
-                    # events overlap each other (clean separation).
-                    has_overlap = xl > x + 5  # shrunk = had overlaps
+                    # Normal in b/w: solid black box with a WHITE border. When
+                    # events overlap, the shorter one is drawn on top of the
+                    # longer (black) box; a white border makes that boundary
+                    # visible instead of the two merging into one black blob.
                     box_fill = BLACK
-                    box_outline = BLACK if has_overlap else WHITE
+                    box_outline = WHITE
             elif is_crossed:
                 box_fill, box_outline = WHITE, GRAY_DIM
             elif is_past:
@@ -881,6 +882,9 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     text_fill = WHITE
             else:
                 text_fill = GRAY_MID if is_dimmed else BLACK
+            # White text on a solid black box (1-bit mode) reads poorly with a
+            # regular weight — use bold so thin strokes survive on black.
+            line_font = event_bold if (bw_mode and not is_dimmed) else event_font
 
             y = ey_top + 4
             for text, is_time in render_lines:
@@ -905,7 +909,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 if bw_mode and is_dimmed and dim_style == "checkerboard":
                     for ox, oy in [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]:
                         draw.text((txt_x + ox, y + oy), text, fill=WHITE, font=event_font)
-                draw.text((txt_x, y), text, fill=text_fill, font=event_font)
+                draw.text((txt_x, y), text, fill=text_fill, font=line_font)
                 y += line_h
 
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)

@@ -64,6 +64,13 @@ static void apply_border_blend(uint8_t *region_data,
                                int screen_w, int screen_h,
                                int border)
 {
+    /* Use NEW content everywhere in the region — including the border zone.
+       This overwrites any ghosting artifacts from previous GL16 updates in
+       the border area. The old "keep old pixels" approach preserved ghosted
+       content, causing the doubling/ghosting effect on text and lines. */
+    (void)old_full;  /* unused now — kept for API compatibility */
+    (void)border;   /* unused now */
+
     for (int y = 0; y < rh; y++) {
         for (int x = 0; x < rw; x++) {
             int gx = rx + x;
@@ -72,19 +79,7 @@ static void apply_border_blend(uint8_t *region_data,
                 region_data[y * rw + x] = 255;
                 continue;
             }
-
-            /* Distance from region edge (0 = outer edge, increases inward) */
-            int dx = (x < rw - 1 - x) ? x : (rw - 1 - x);
-            int dy = (y < rh - 1 - y) ? y : (rh - 1 - y);
-            int dist = (dx < dy) ? dx : dy;
-
-            if (dist >= border) {
-                /* Inner region: new content */
-                region_data[y * rw + x] = new_full[gy * screen_w + gx];
-            } else {
-                /* Border zone: keep old content (preserve prior state) */
-                region_data[y * rw + x] = old_full[gy * screen_w + gx];
-            }
+            region_data[y * rw + x] = new_full[gy * screen_w + gx];
         }
     }
 }

@@ -380,6 +380,42 @@ static int do_edge_test(it8951_t *dev)
     return 0;
 }
 
+/* ---- Grid test: 1px lines with labels, 50px spacing ---- */
+static int do_grid_test(it8951_t *dev)
+{
+    int w = dev->info.panel_w;   /* 1872 */
+    int h = dev->info.panel_h;   /* 1404 */
+    int spacing = 50;
+
+    /* Full-screen white background (0 = white on screen) */
+    uint8_t *canvas = malloc(w * h);
+    memset(canvas, 0, w * h);  /* all 0 = white */
+
+    /* Draw vertical 1px black lines every 50px (x=50, 100, 150, ...) */
+    int vcount = 0;
+    for (int x = spacing; x < w; x += spacing) {
+        for (int y = 0; y < h; y++)
+            canvas[y * w + x] = 255;  /* 255 = black */
+        vcount++;
+    }
+
+    /* Draw horizontal 1px black lines every 50px (y=50, 100, 150, ...) */
+    int hcount = 0;
+    for (int y = spacing; y < h; y += spacing) {
+        for (int x = 0; x < w; x++)
+            canvas[y * w + x] = 255;
+        hcount++;
+    }
+
+    printf("Displaying grid test (%d vertical, %d horizontal lines, %dpx spacing)...\n",
+           vcount, hcount, spacing);
+    it8951_display_8bpp(dev, canvas, 0, 0, w, h, GC16_MODE);
+    printf("Done.\n");
+
+    free(canvas);
+    return 0;
+}
+
 static void usage(const char *prog)
 {
     printf("IT8951 E-Paper Display Driver (C version)\n\n");
@@ -399,6 +435,7 @@ static void usage(const char *prog)
     printf("  --cross-vertical      Cross gradient: bottom-to-top\n");
     printf("  --quarter             Top-left quarter black\n");
     printf("  --edge-test           4x 50px black squares at corners with dotted borders\n");
+    printf("  --grid-test           1px grid lines every 50px (vertical+horizontal)\n");
     printf("  --setup               Configure OS (overlay + packages)\n");
     printf("  --server              Start HTTP API server (port 8888)\n");
     printf("  --port N              Server port (default: 8888)\n");
@@ -424,7 +461,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     int do_info = 0, do_clear = 0, want_gradient = 0, do_quarter_flag = 0;
-    int do_setup_flag = 0, do_server = 0, do_edge_test_flag = 0;
+    int do_setup_flag = 0, do_server = 0, do_edge_test_flag = 0, do_grid_test_flag = 0;
     int checker = 0, cross = 0;
     int cross_invert = 0, cross_vertical = 0;
     int font_size = 48, port = 8888;
@@ -447,7 +484,8 @@ int main(int argc, char *argv[])
         {"cross",          optional_argument, 0, 'x'},
         {"cross-invert",   no_argument,       0, 'X'},
         {"cross-vertical", no_argument,       0, 'V'},
-        {"quarter",        no_argument,       0, 'q'},        {"edge-test",        no_argument,       0, 'e'},        {"setup",          no_argument,       0, 's'},
+        {"quarter",        no_argument,       0, 'q'},        {"edge-test",        no_argument,       0, 'e'},
+        {"grid-test",        no_argument,       0, 'G'},        {"setup",          no_argument,       0, 's'},
         {"server",         no_argument,       0, 'S'},
         {"port",           required_argument, 0, 'p'},
         {"set-vcom",       required_argument, 0, 'v'},
@@ -459,7 +497,7 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "ict:f:F:m:b:gk::x::XVqesSp:v:HODAB:h",
+    while ((opt = getopt_long(argc, argv, "ict:f:F:m:b:gk::x::XVqGeSp:v:HODAB:h",
                               long_opts, NULL)) != -1) {
         switch (opt) {
             case 'i': do_info = 1; break;
@@ -476,6 +514,7 @@ int main(int argc, char *argv[])
             case 'V': cross_vertical = 1; break;
             case 'q': do_quarter_flag = 1; break;
             case 'e': do_edge_test_flag = 1; break;
+            case 'G': do_grid_test_flag = 1; break;
             case 's': do_setup_flag = 1; break;
             case 'S': do_server = 1; break;
             case 'p': port = atoi(optarg); break;
@@ -503,7 +542,8 @@ int main(int argc, char *argv[])
     }
 
     int has_action = do_clear || text || image_path || want_gradient ||
-                     checker || cross || do_quarter_flag || do_edge_test_flag || do_server;
+                     checker || cross || do_quarter_flag || do_edge_test_flag ||
+                     do_grid_test_flag || do_server;
 
     if (do_info || !has_action) {
         uint16_t vcom = it8951_get_vcom(&dev);
@@ -560,7 +600,8 @@ int main(int argc, char *argv[])
 
     if (do_edge_test_flag)
         do_edge_test(&dev);
-
+    if (do_grid_test_flag)
+        do_grid_test(&dev);
     if (do_server) {
         printf("HTTP server not yet implemented in C version.\n");
         printf("Use the Python version for the API server.\n");

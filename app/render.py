@@ -559,7 +559,13 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         prev_d = start_date + datetime.timedelta(days=i - 1)
         curr_d = start_date + datetime.timedelta(days=i)
         if prev_d.month != curr_d.month:
+            # Thick line at month boundary (same in all modes)
             draw.line([(x, sep_top), (x, grid_y + grid_h)], fill=BLACK, width=3)
+        elif bw_mode:
+            # Dotted vertical day separator in b/w mode
+            for dy in range(grid_y, grid_y + grid_h, 4):
+                y2 = min(dy + 2, grid_y + grid_h)
+                draw.line([(x, dy), (x, y2)], fill=BLACK, width=1)
         else:
             draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=GRAY_LIGHT, width=1)
 

@@ -1304,75 +1304,94 @@ def render_setup_required(lan_ip: str, port: int, ssl: bool = False) -> Image.Im
     """
     redirect_uri = "http://localhost:8889/auth/callback"
     scheme = "https" if ssl else "http"
+    settings_url = f"{scheme}://{lan_ip}:{port}/settings"
     scale = 3
     sw, sh = W * scale, H * scale
+
+    # Right-hand QR column reserved at final resolution; text wraps to its left.
+    qr_size = 460
+    qr_x = W - RIGHT_PAD - qr_size - 30       # final-res left edge of the QR
+    qr_y = 250
+    text_right = qr_x - 30                     # final-res right edge for text
 
     canvas = Image.new("RGB", (sw, sh), (255, 255, 255))
     draw = ImageDraw.Draw(canvas)
 
     x = MARGIN * scale
-    y = 36 * scale
+    y = 30 * scale
 
     # Title
-    title_font = _font(64 * scale, bold=True)
+    title_font = _font(60 * scale, bold=True)
     draw.text((x, y), "Setup Required", fill=BLACK, font=title_font)
-    y += 80 * scale
-
-    # Separator
+    y += 76 * scale
     _hline(draw, x, y, W * scale - MARGIN * scale, GRAY_MID, width=2 * scale)
-    y += 36 * scale
+    y += 26 * scale
 
-    step_font = _font(56 * scale, bold=True)
-    text_font = _font(44 * scale)
-    code_font = _font(38 * scale)
-    indent = x + 24 * scale
+    step_font = _font(44 * scale, bold=True)
+    text_font = _font(34 * scale)
+    indent = x + 22 * scale
+    text_wrap_w = text_right * scale - indent   # keep steps clear of the QR
 
     steps = [
-        ("step", "1. Create Google OAuth Credentials"),
-        ("text", "Go to console.cloud.google.com"),
-        ("text", "Create or select a project"),
-        ("text", "Enable Google Calendar API"),
+        ("step", "1. Create a Google app"),
+        ("text", "Open console.cloud.google.com, new project"),
+        ("text", "APIs & Services > Enable 'Google Calendar API'"),
+        ("text", "OAuth consent screen: User type = External"),
+        ("text", "Add your Google account as a Test user"),
         ("text", "Credentials > Create > OAuth client ID"),
-        ("text", "Type: Web application"),
-        ("text", f"Redirect URI: {redirect_uri}"),
-        ("text", "Download client_secret.json"),
+        ("text", "Application type: Web application"),
+        ("text", "Add Authorized redirect URI:"),
+        ("code", redirect_uri),
+        ("text", "Create, then Download JSON (client_secret.json)"),
         ("blank", ""),
-        ("step", "2. Upload to Pi"),
-        ("code", f"scp client_secret.json root@{lan_ip}:/opt/eink-calendar/config/"),
-        ("blank", ""),
-        ("step", "3. Restart the app"),
-        ("code", "ssh root@192.168.0.199 'systemctl restart eink-calendar'"),
-        ("blank", ""),
-        ("step", "After restart:"),
-        ("text", "E-ink will show a QR code"),
-        ("text", f"Open {scheme}://{lan_ip}:{port}/settings"),
-        ("text", "Login with Google, select calendars"),
+        ("step", "2. Authorize this display"),
+        ("text", "Scan the QR to open the settings page"),
+        ("text", "Upload client_secret.json there"),
+        ("text", "Tap 'Login with Google' and approve access"),
+        ("text", "Copy the shown code, paste it back"),
+        ("text", "Pick your calendars — done"),
     ]
+
+    def _fit(line, font):
+        s = line
+        while _text_w(draw, s, font) > text_wrap_w and len(s) > 4:
+            s = s[:-1]
+        return s if s == line else s[:-1] + "…"
 
     for kind, line in steps:
         if kind == "blank":
-            y += 16 * scale
+            y += 14 * scale
         elif kind == "step":
             draw.text((x, y), line, fill=BLACK, font=step_font)
-            y += 64 * scale
-        elif kind == "text":
-            draw.text((indent, y), line, fill=GRAY_DARK, font=text_font)
-            y += 54 * scale
-        elif kind == "code":
-            tw = _text_w(draw, line, code_font)
-            box_w = min(tw + 24 * scale, W * scale - MARGIN * scale - indent + 8 * scale)
-            box_h = 48 * scale
-            draw.rectangle([indent - 8 * scale, y - 2 * scale,
-                           indent - 8 * scale + box_w + 2 * scale, y + box_h + 2 * scale],
-                           outline=GRAY_MID, width=2 * scale)
-            display = line
-            while _text_w(draw, display, code_font) > W * scale - MARGIN * scale - indent - 16 * scale and len(display) > 3:
-                display = display[:-1]
-            if display != line:
-                display = display[:-1] + "…"
-            draw.text((indent, y + 4 * scale), display, fill=BLACK, font=code_font)
             y += 56 * scale
+        elif kind == "text":
+            draw.text((indent, y), "• " + _fit(line, text_font), fill=GRAY_DARK, font=text_font)
+            y += 46 * scale
+        elif kind == "code":
+            draw.text((indent, y), _fit(line, text_font), fill=BLACK, font=text_font)
+            y += 46 * scale
 
-    # Downscale with LANCZOS (high-quality cubic filter) — matches C driver's
-    # bilinear downscale but produces slightly sharper results at same quality.
-    return canvas.resize((W, H), Image.LANCZOS)
+    # Downscale text with LANCZOS, then paste the QR at final resolution so its
+    # modules stay crisp (scannable) rather than blurred by the downscale.
+    img = canvas.resize((W, H), Image.LANCZOS)
+    draw2 = ImageDraw.Draw(img)
+
+    import qrcode
+    qr = qrcode.QRCode(version=1, box_size=12, border=2,
+                       error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(settings_url)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    qr_img = qr_img.resize((qr_size, qr_size), Image.NEAREST)
+    img.paste(qr_img, (qr_x, qr_y))
+
+    lbl_font = _font(30, bold=True)
+    lbl = "Scan to finish setup"
+    lw = _text_w(draw2, lbl, lbl_font)
+    draw2.text((qr_x + (qr_size - lw) // 2, qr_y - 44), lbl, fill=BLACK, font=lbl_font)
+    url_font = _font(24)
+    uw = _text_w(draw2, settings_url, url_font)
+    draw2.text((qr_x + (qr_size - uw) // 2, qr_y + qr_size + 12), settings_url,
+               fill=GRAY_DARK, font=url_font)
+
+    return img

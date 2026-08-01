@@ -387,15 +387,15 @@ static int do_grid_test(it8951_t *dev)
     int h = dev->info.panel_h;   /* 1404 */
     int spacing = 50;
 
-    /* Full-screen white background (0 = white on screen) */
+    /* Full-screen white background (255 = white on screen) */
     uint8_t *canvas = malloc(w * h);
-    memset(canvas, 0, w * h);  /* all 0 = white */
+    memset(canvas, 255, w * h);  /* all 255 = white */
 
     /* Draw vertical 1px black lines every 50px (x=50, 100, 150, ...) */
     int vcount = 0;
     for (int x = spacing; x < w; x += spacing) {
         for (int y = 0; y < h; y++)
-            canvas[y * w + x] = 255;  /* 255 = black */
+            canvas[y * w + x] = 0;  /* 0 = black */
         vcount++;
     }
 
@@ -403,7 +403,7 @@ static int do_grid_test(it8951_t *dev)
     int hcount = 0;
     for (int y = spacing; y < h; y += spacing) {
         for (int x = 0; x < w; x++)
-            canvas[y * w + x] = 255;
+            canvas[y * w + x] = 0;
         hcount++;
     }
 

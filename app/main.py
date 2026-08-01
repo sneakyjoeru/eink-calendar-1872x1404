@@ -1203,6 +1203,9 @@ header p {{ color: var(--muted); font-size: 0.85em; }}
 .settings-grid {{ columns: 300px; column-gap: 16px; }}
 .settings-grid > .card {{ break-inside: avoid; -webkit-column-break-inside: avoid;
   margin: 0 0 16px; }}
+/* Google Account + Presets pinned side by side on wide screens, stacked on phone */
+.top-row {{ display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }}
+@media (min-width: 700px) {{ .top-row {{ grid-template-columns: 1fr 1fr; }} }}
 .card {{ background: var(--card); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }}
 .card h2 {{ font-size: 1.05em; margin-bottom: 14px; color: var(--accent); display: flex; align-items: center; gap: 8px; }}
 .card h3 {{ font-size: 0.72em; margin: 18px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600; }}
@@ -1250,12 +1253,30 @@ input[type="range"] {{ width: 100%; }}
 {saved_html}
 
 <form id="settingsForm" action="/api/settings" method="POST">
-<div class="settings-grid">
-
+<div class="top-row">
   <div class="card">
     <h2>🔐 Google Account</h2>
     {auth_section}
   </div>
+
+  <div class="card">
+    <h2>⚡ Presets</h2>
+    <div class="field">
+      <label>Choose a preset</label>
+      <select id="presetSelect" onchange="applyPreset()">
+        <option value="">— Select —</option>
+        <option value="soft_clean">Soft · Clean</option>
+        <option value="soft_live">Soft · Live (1-min)</option>
+        <option value="hard_clean">Hard · Clean</option>
+        <option value="bw_zero">B/W · Zero dirt (checkerboard)</option>
+        <option value="bw_solid">B/W · Zero dirt (solid dim)</option>
+      </select>
+      <div class="note" id="presetDesc" style="margin-top:6px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="settings-grid">
 
   <div class="card">
     <h2>🎨 Display mode</h2>
@@ -1388,22 +1409,6 @@ input[type="range"] {{ width: 100%; }}
         <option value="dotted" {sel_tl_style_dotted}>Dotted (default)</option>
         <option value="wavy" {sel_tl_style_wavy}>Wavy</option>
       </select>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>⚡ Presets</h2>
-    <div class="field">
-      <label>Choose a preset</label>
-      <select id="presetSelect" onchange="applyPreset()">
-        <option value="">— Select —</option>
-        <option value="soft_clean">Soft · Clean</option>
-        <option value="soft_live">Soft · Live (1-min)</option>
-        <option value="hard_clean">Hard · Clean</option>
-        <option value="bw_zero">B/W · Zero dirt (checkerboard)</option>
-        <option value="bw_solid">B/W · Zero dirt (solid dim)</option>
-      </select>
-      <div class="note" id="presetDesc" style="margin-top:6px"></div>
     </div>
   </div>
 

@@ -1207,6 +1207,76 @@ def render_qr_setup(qr_url: str, scheme: str, lan_ip: str, port: int) -> Image.I
     return img
 
 
+def render_wifi_hotspot(ssid: str, password: str, portal_url: str,
+                        wifi_qr_text: str) -> Image.Image:
+    """Provisioning screen shown while the Pi hosts its own hotspot.
+
+    Two QR codes side by side:
+      1. Join the hotspot (WIFI: payload — a phone camera joins the AP)
+      2. Open the setup page (portal_url) to enter home-WiFi credentials
+    Plus the SSID / password / URL in text as a fallback.
+    """
+    import qrcode
+
+    img = Image.new("RGB", (W, H), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    title_font = _font(52, bold=True)
+    title = "Connect this display to WiFi"
+    tw = _text_w(draw, title, title_font)
+    draw.text(((W - tw) // 2, 40), title, fill=BLACK, font=title_font,
+              stroke_width=2, stroke_fill=BLACK)
+
+    sub_font = _font(26)
+    sub = "No internet — the display is hosting a temporary hotspot"
+    sw = _text_w(draw, sub, sub_font)
+    draw.text(((W - sw) // 2, 108), sub, fill=GRAY_DARK, font=sub_font)
+
+    def _qr(data: str, size: int) -> Image.Image:
+        qr = qrcode.QRCode(version=1, box_size=12, border=2,
+                           error_correction=qrcode.constants.ERROR_CORRECT_M)
+        qr.add_data(data)
+        qr.make(fit=True)
+        q = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        return q.resize((size, size), Image.NEAREST)
+
+    qr_size = 520
+    col_l = W // 4                 # left column center
+    col_r = 3 * W // 4             # right column center
+    qr_y = 250
+    step_font = _font(34, bold=True)
+    label_font = _font(30, bold=True)
+    val_font = _font(30)
+
+    # ---- Column 1: join the hotspot ----
+    s1 = "1. Scan to join the hotspot"
+    s1w = _text_w(draw, s1, step_font)
+    draw.text((col_l - s1w // 2, qr_y - 60), s1, fill=BLACK, font=step_font,
+              stroke_width=1, stroke_fill=BLACK)
+    img.paste(_qr(wifi_qr_text, qr_size), (col_l - qr_size // 2, qr_y))
+    ty = qr_y + qr_size + 24
+    for label, val in (("Network:", ssid), ("Password:", password)):
+        line = f"{label} {val}"
+        lw = _text_w(draw, line, val_font)
+        draw.text((col_l - lw // 2, ty), line, fill=BLACK, font=val_font)
+        ty += 44
+
+    # ---- Column 2: open the setup page ----
+    s2 = "2. Then open the setup page"
+    s2w = _text_w(draw, s2, step_font)
+    draw.text((col_r - s2w // 2, qr_y - 60), s2, fill=BLACK, font=step_font,
+              stroke_width=1, stroke_fill=BLACK)
+    img.paste(_qr(portal_url, qr_size), (col_r - qr_size // 2, qr_y))
+    uw = _text_w(draw, portal_url, val_font)
+    draw.text((col_r - uw // 2, qr_y + qr_size + 24), portal_url,
+              fill=BLACK, font=val_font)
+    hint = "(after joining the hotspot)"
+    hw = _text_w(draw, hint, sub_font)
+    draw.text((col_r - hw // 2, qr_y + qr_size + 68), hint, fill=GRAY_DARK, font=sub_font)
+
+    return img
+
+
 def render_status(message: str, submessage: str = "") -> Image.Image:
     """Render a simple status/error message screen."""
     img = Image.new("RGB", (W, H), (255, 255, 255))

@@ -278,6 +278,31 @@ def render_status_screen(msg: str, sub: str = "") -> bool:
     return driver.render_to_screen(img, brightness=1.0)
 
 
+def render_hotspot_screen(ssid: str = "", pw: str = "", ip: str = "") -> bool:
+    """Show the WiFi-provisioning QR screen while the Pi hosts its own hotspot:
+    a QR to join the hotspot + a QR/URL for the setup page."""
+    ssid = ssid or wifi_setup.hotspot_ssid()
+    pw = pw or wifi_setup.hotspot_password()
+    ip = ip or wifi_setup.hotspot_ip()
+    portal_url = f"{_scheme()}://{ip}:{config.APP_PORT}/wifi-setup"
+    img = render.render_wifi_hotspot(ssid, pw, portal_url,
+                                     wifi_setup.get_hotspot_qr_text())
+    return driver.render_to_screen(img, brightness=1.0, force_full=True)
+
+
+def render_after_restore() -> None:
+    """Re-render the appropriate screen once connectivity is restored."""
+    logger.info("Connectivity restored — re-rendering")
+    if not calendar_client.is_configured():
+        img = render.render_setup_required(_get_lan_ip(), config.APP_PORT,
+                                           ssl=config.SSL_ENABLED)
+        driver.render_to_screen(img, brightness=1.0)
+    elif not calendar_client.is_authenticated():
+        render_setup_screen()
+    else:
+        do_render(force=True, force_full=True)
+
+
 # ---- Background scheduler ----
 _scheduler_running = True
 
@@ -499,9 +524,11 @@ async def startup():
     # Auto-detect timezone in background (don't block startup)
     _auto_detect_timezone_async()
 
-    # Initial screen
-    if not calendar_client.is_configured():
-        ssl_on = " [HTTPS]" if config.SSL_ENABLED else ""
+    # Initial screen. If we have no network yet, don't show a useless LAN-IP
+    # QR — the connectivity monitor will raise the hotspot and render its QR.
+    if not wifi_setup.is_online():
+        render_status_screen("Connecting to WiFi…", "If it can't connect, a setup hotspot will start")
+    elif not calendar_client.is_configured():
         img = render.render_setup_required(lan_ip, config.APP_PORT, ssl=config.SSL_ENABLED)
         driver.render_to_screen(img, brightness=1.0)
     elif not calendar_client.is_authenticated():
@@ -516,8 +543,12 @@ async def startup():
     t = threading.Thread(target=background_loop, daemon=True)
     t.start()
 
-    # Start WiFi connectivity monitor (hotspot fallback)
-    wifi_setup.start_monitor(interval=120)
+    # Start WiFi connectivity monitor. On sustained connectivity loss it raises
+    # a hotspot and renders the join QR (on_hotspot); on reconnect it re-renders
+    # the calendar/settings (on_restore).
+    wifi_setup.start_monitor(interval=60,
+                             on_hotspot=render_hotspot_screen,
+                             on_restore=render_after_restore)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -574,21 +605,21 @@ async def settings_page(request: Request):
         <div class="alert">⚠️ Place your <code>client_secret.json</code> below:</div>
         <div style="display:flex;gap:8px">
           <input type="file" id="secretFile" accept=".json" style="flex:1;padding:6px;background:#0f3460;color:#eee;border-radius:6px;border:1px solid #333;font-size:0.85em">
-          <button class="btn btn-small" onclick="uploadSecret()" style="white-space:nowrap">Upload</button>
+          <button type="button" class="btn btn-small" onclick="uploadSecret()" style="white-space:nowrap">Upload</button>
         </div>
         <p id="uploadStatus" style="font-size:0.8em;margin-top:6px"></p>
         '''
     elif not authenticated:
         auth_section = '''
         <p style="margin-bottom:10px">Click below to get the authorization link, then paste the code back.</p>
-        <button class="btn btn-auth" onclick="startGoogleAuth()">🔐 Login with Google</button>
+        <button type="button" class="btn btn-auth" onclick="startGoogleAuth()">🔐 Login with Google</button>
         <div id="authFlow" style="display:none;margin-top:12px">
           <p>1. Open this link in your browser:</p>
           <p><a id="authUrl" href="#" target="_blank" style="word-break:break-all;color:#4285F4"></a></p>
           <p style="margin-top:10px">2. Authorize. When the redirect fails, <b>copy the full URL</b> from the address bar and paste it below.</p>
           <p>3. Paste the redirect URL or just the code:</p>
           <input id="authCode" type="text" style="width:100%;padding:8px;margin-bottom:8px" placeholder="Paste the full redirect URL or just the code">
-          <button class="btn btn-primary" onclick="exchangeCode()">✓ Exchange Code</button>
+          <button type="button" class="btn btn-primary" onclick="exchangeCode()">✓ Exchange Code</button>
           <p id="authStatus" style="margin-top:8px;font-size:0.85em"></p>
         </div>
         '''
@@ -1041,8 +1072,9 @@ async function connect() {{
     }});
     const data = await r.json();
     if (data.ok) {{
-      status.textContent = '✓ Connected! The hotspot will turn off. Page will reload in 10s...';
-      setTimeout(() => location.reload(), 10000);
+      status.innerHTML = '✓ Connecting to <b>' + ssid + '</b>…<br>' +
+        'The setup hotspot will now turn off. Reconnect your phone to your ' +
+        'home WiFi, then look at the display for the new address to open.';
     }} else {{
       status.textContent = '✗ ' + (data.error || 'Connection failed');
     }}
@@ -1071,40 +1103,32 @@ async def wifi_scan():
 
 @app.post("/api/wifi-connect")
 async def wifi_connect(request: Request):
-    """Connect to a WiFi network."""
+    """Connect to a WiFi network via NetworkManager.
+
+    The switchover is done in a background thread so this HTTP response can
+    flush BEFORE the hotspot is torn down (tearing it down drops the client's
+    connection). The client is told to reconnect to their home WiFi and read
+    the new address off the display, which re-renders once connectivity is
+    restored.
+    """
     data = await request.json()
     ssid = data.get("ssid", "").strip()
     password = data.get("password", "")
     if not ssid:
         return JSONResponse({"ok": False, "error": "SSID is required"}, status_code=400)
-    try:
-        # Stop hotspot first
-        wifi_setup.stop_hotspot()
-        # Write wpa_supplicant config
-        import subprocess
-        if password:
-            subprocess.run(
-                ["wpa_passphrase", ssid, password],
-                capture_output=True, text=True, timeout=10, check=True
-            )
-        # Configure network
-        conf = f'''ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-country=RU
 
-network={{
-    ssid="{ssid}"
-    {"psk=\"" + password + "\"" if password else "key_mgmt=NONE"}
-}}
-'''
-        Path("/etc/wpa_supplicant/wpa_supplicant.conf").write_text(conf)
-        subprocess.run(["wpa_cli", "-i", wifi_setup.HOTSPOT_IFACE, "reconfigure"],
-                       capture_output=True, timeout=10)
-        logger.info("WiFi configured: SSID=%s", ssid)
-        return {"ok": True, "ssid": ssid}
-    except Exception as e:
-        logger.error("WiFi connect failed: %s", e)
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    import time
+
+    def _switch():
+        time.sleep(1)  # let the JSON response flush to the client first
+        ok, err = wifi_setup.connect_wifi(ssid, password)
+        if ok and wifi_setup.is_online():
+            wifi_setup.notify_restored()
+        elif not ok:
+            logger.error("WiFi connect failed: %s", err)
+
+    threading.Thread(target=_switch, daemon=True).start()
+    return {"ok": True, "ssid": ssid}
 
 
 # ---- Google OAuth routes ----

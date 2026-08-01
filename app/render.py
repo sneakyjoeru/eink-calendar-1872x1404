@@ -34,9 +34,15 @@ _SIZE_MODIFIER = 0  # global font size adjustment, set before each render
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Get a cached font instance, adjusted by global size modifier."""
-    size = max(4, size + _SIZE_MODIFIER)
-    path = _FONT_PATHS[1] if bold else _FONT_PATHS[0]
+    """Get a cached font instance, adjusted by global size modifier.
+
+    Always uses the regular (non-bold) font — bold fonts produce 3-5px wide
+    strokes that the IT8951 GC16 waveform doubles/splits. The regular font
+    produces 2px strokes that render cleanly. Size is increased by 1 when
+    bold was requested, to partially compensate for the thinner weight.
+    """
+    size = max(4, size + _SIZE_MODIFIER + (1 if bold else 0))
+    path = _FONT_PATHS[0]  # always regular — bold strokes get doubled by GC16
     key = (path, size)
     if key not in _FONT_CACHE:
         try:
@@ -54,6 +60,41 @@ def _text_w(draw: ImageDraw.ImageDraw, text: str, font) -> int:
 def _text_h(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[3] - bbox[1]
+
+
+# ---- Exact (non-antialiased) drawing helpers for b/w mode ----
+def _hline(draw, x0: int, y: int, x1: int, fill, width: int = 1):
+    """Draw a horizontal line using rectangle fill (no PIL line AA)."""
+    if width == 1:
+        draw.rectangle([(x0, y), (x1, y)], fill=fill)
+    else:
+        half = width // 2
+        draw.rectangle([(x0, y - half), (x1, y + width - half - 1)], fill=fill)
+
+
+def _vline(draw, x: int, y0: int, y1: int, fill, width: int = 1):
+    """Draw a vertical line using rectangle fill (no PIL line AA)."""
+    if width == 1:
+        draw.rectangle([(x, y0), (x, y1)], fill=fill)
+    else:
+        half = width // 2
+        draw.rectangle([(x - half, y0), (x + width - half - 1, y1)], fill=fill)
+
+
+def _hsegments(draw, x0: int, x1: int, y: int, fill,
+               step: int, seg_len: int, width: int = 1):
+    """Draw a dotted/dashed horizontal line with exact rectangle segments."""
+    for sx in range(x0, x1 + 1, step):
+        ex = min(sx + seg_len - 1, x1)
+        _hline(draw, sx, y, ex, fill, width)
+
+
+def _vsegments(draw, x: int, y0: int, y1: int, fill,
+               step: int, seg_len: int, width: int = 1):
+    """Draw a dotted/dashed vertical line with exact rectangle segments."""
+    for sy in range(y0, y1 + 1, step):
+        ey = min(sy + seg_len - 1, y1)
+        _vline(draw, x, sy, ey, fill, width)
 
 
 # ---- Color helpers (grayscale for e-ink: (0,0,0)=black, (255,255,255)=white) ----
@@ -139,12 +180,8 @@ def render_calendar(view_mode: str, events: list[dict],
         ip_center = (title_right + sub_left) // 2
         draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
-    # Grayscale mode: threshold the entire image to pure B/W to eliminate
-    # anti-aliasing artifacts. The IT8951 GL16 waveform ghosts gray AA edge
-    # pixels, creating a visible doubling/shift effect on text and thin lines.
-    # By making everything pure B/W (no gray), there are no gray edge pixels
-    # to ghost. Gray grid lines (GRAY_LIGHT=200) become white after threshold,
-    # so they are drawn as BLACK in this mode to survive the <128 threshold.
+    # b/w mode: threshold the entire image to pure 1-bit black/white.
+    # (In grayscale mode we intentionally keep the real gray levels — see below.)
     if bw_mode:
         gray = img.convert("L")
         if dim_past_events or crossed_event_dim:
@@ -152,14 +189,12 @@ def render_calendar(view_mode: str, events: list[dict],
         else:
             bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
         img = bw.convert("RGB")
-    else:
-        # Grayscale mode: hard threshold to eliminate ALL gray AA pixels that
-        # cause GL16 ghosting/doubling. Threshold at 201 keeps grid lines
-        # (GRAY_LIGHT=200, GRAY_HOUR_LINE=170, GRAY_DIM=153) as black, while
-        # event fills (GRAY_VLIGHT=239) and background (255) stay white.
-        gray = img.convert("L")
-        bw = gray.point(lambda x: 0 if x < 201 else 255, "L")
-        img = bw.convert("RGB")
+    # else: grayscale mode — keep the palette's real gray levels (event fills,
+    # dim shading, grid/hour lines). Previously this branch hard-thresholded
+    # everything at 201 to dodge GL16 gray-edge ghosting, which flattened all
+    # event shading. That artifact is now handled at the driver level by the
+    # 2px-grid snap (snap_to_2px_grid), so the image is passed through with its
+    # 16-level grays intact and rendered natively by GC16 (full) / GL16 (region).
 
     return img
 
@@ -179,7 +214,7 @@ def _draw_header(draw: ImageDraw.ImageDraw, title: str, subtitle: str = ""):
 
     # Header separator line
     y = HEADER_H - 10
-    draw.line([(MARGIN, y), (W - MARGIN, y)], fill=GRAY_MID, width=2)
+    _hline(draw, MARGIN, y, W - MARGIN, GRAY_MID, width=2)
 
 
 # ---- Month view ----
@@ -239,8 +274,8 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
     event_font = _font(22)
     event_bold = _font(22, bold=True)
     # Outer left + top border (cells only draw right+bottom edges)
-    draw.line([(grid_x, grid_y), (grid_x, grid_y + num_weeks * row_h - 1)], fill=GRAY_LIGHT, width=1)
-    draw.line([(grid_x, grid_y), (grid_x + 7 * col_w - 1, grid_y)], fill=GRAY_LIGHT, width=1)
+    _vline(draw, grid_x, grid_y, grid_y + num_weeks * row_h - 1, GRAY_LIGHT, width=1)
+    _hline(draw, grid_x, grid_y, grid_x + 7 * col_w - 1, GRAY_LIGHT, width=1)
     day_num = grid_start
     for week in range(num_weeks):
         for col in range(7):
@@ -256,46 +291,34 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
             bottom_strong = week < num_weeks - 1 and next_week.month != day_num.month
             if right_strong or bottom_strong:
                 if right_strong:
-                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+                    _vline(draw, x + col_w - 1, y, y + row_h - 1, BLACK, width=3)
                 if bottom_strong:
-                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+                    _hline(draw, x, y + row_h - 1, x + col_w - 1, BLACK, width=3)
                 # Non-strong edges as thin lines
                 if not right_strong and col < 6:
-                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                    _vline(draw, x + col_w - 1, y, y + row_h - 1, GRAY_LIGHT, width=1)
                 if not bottom_strong and week < num_weeks - 1:
-                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                    _hline(draw, x, y + row_h - 1, x + col_w - 1, GRAY_LIGHT, width=1)
             elif bw_mode:
-                # Dotted cell border in b/w mode (2x spacing: 2px dot, 6px gap).
-                # Draw ONLY the dotted segments — no solid rectangle underneath
-                # (a solid line + white-gap erase leaves residual pixels = doubled look).
+                # Dotted cell border in b/w mode (2px dot, 6px gap).
+                # Draw ONLY the dotted segments — no solid rectangle underneath.
                 # Right edge (dotted vertical)
                 if col < 6 and not right_strong:
-                    for dy in range(y, y + row_h, 8):
-                        y2 = min(dy + 2, y + row_h - 1)
-                        draw.line([(x + col_w - 1, dy), (x + col_w - 1, y2)], fill=BLACK, width=1)
+                    _vsegments(draw, x + col_w - 1, y, y + row_h - 1, BLACK, step=8, seg_len=2, width=1)
                 # Bottom edge (dotted horizontal)
                 if week < num_weeks - 1 and not bottom_strong:
-                    for dx in range(x, x + col_w, 8):
-                        x2 = min(dx + 2, x + col_w - 1)
-                        draw.line([(dx, y + row_h - 1), (x2, y + row_h - 1)], fill=BLACK, width=1)
+                    _hsegments(draw, x, x + col_w - 1, y + row_h - 1, BLACK, step=8, seg_len=2, width=1)
                 # Left + top edges: only draw if this is the first cell (col=0/week=0)
-                # or the neighbor didn't draw its right/bottom (avoids double-drawing).
-                # Left edge of first column
                 if col == 0:
-                    for dy in range(y, y + row_h, 8):
-                        y2 = min(dy + 2, y + row_h - 1)
-                        draw.line([(x, dy), (x, y2)], fill=BLACK, width=1)
-                # Top edge of first row
+                    _vsegments(draw, x, y, y + row_h - 1, BLACK, step=8, seg_len=2, width=1)
                 if week == 0:
-                    for dx in range(x, x + col_w, 8):
-                        x2 = min(dx + 2, x + col_w - 1)
-                        draw.line([(dx, y), (x2, y)], fill=BLACK, width=1)
+                    _hsegments(draw, x, x + col_w - 1, y, BLACK, step=8, seg_len=2, width=1)
             else:
                 # Non-bw, non-month-boundary: draw only RIGHT + BOTTOM edges
                 if col < 6:
-                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                    _vline(draw, x + col_w - 1, y, y + row_h - 1, GRAY_LIGHT, width=1)
                 if week < num_weeks - 1:
-                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                    _hline(draw, x, y + row_h - 1, x + col_w - 1, GRAY_LIGHT, width=1)
 
             # Day number
             in_month = day_num.month == today.month
@@ -322,18 +345,33 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
                 top_strong = week > 0 and prev_week.month != day_num.month
                 dot_step = 27
                 dot_r = 4
-                if not top_strong:
-                    for dx in range(2, col_w - 1, dot_step):
-                        draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
-                if not bottom_strong:
-                    for dx in range(2, col_w - 1, dot_step):
-                        draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
-                if not left_strong:
-                    for dy in range(dot_step, row_h - 2, dot_step):
-                        draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
-                if not right_strong:
-                    for dy in range(dot_step, row_h - 2, dot_step):
-                        draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
+                if bw_mode:
+                    # Square dots (no AA) in b/w mode
+                    if not top_strong:
+                        for dx in range(2, col_w - 1, dot_step):
+                            draw.rectangle([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
+                    if not bottom_strong:
+                        for dx in range(2, col_w - 1, dot_step):
+                            draw.rectangle([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
+                    if not left_strong:
+                        for dy in range(dot_step, row_h - 2, dot_step):
+                            draw.rectangle([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
+                    if not right_strong:
+                        for dy in range(dot_step, row_h - 2, dot_step):
+                            draw.rectangle([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
+                else:
+                    if not top_strong:
+                        for dx in range(2, col_w - 1, dot_step):
+                            draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
+                    if not bottom_strong:
+                        for dx in range(2, col_w - 1, dot_step):
+                            draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
+                    if not left_strong:
+                        for dy in range(dot_step, row_h - 2, dot_step):
+                            draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
+                    if not right_strong:
+                        for dy in range(dot_step, row_h - 2, dot_step):
+                            draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
 
@@ -417,8 +455,8 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
     event_font = _font(22)
     event_bold = _font(22, bold=True)
     # Outer left + top border (cells only draw right+bottom edges)
-    draw.line([(grid_x, grid_y), (grid_x, grid_y + num_weeks * row_h - 1)], fill=GRAY_LIGHT, width=1)
-    draw.line([(grid_x, grid_y), (grid_x + 7 * col_w - 1, grid_y)], fill=GRAY_LIGHT, width=1)
+    _vline(draw, grid_x, grid_y, grid_y + num_weeks * row_h - 1, GRAY_LIGHT, width=1)
+    _hline(draw, grid_x, grid_y, grid_x + 7 * col_w - 1, GRAY_LIGHT, width=1)
     day_num = start_date
     for week in range(num_weeks):
         for col in range(7):
@@ -432,37 +470,29 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
             bottom_strong = week < num_weeks - 1 and next_week.month != day_num.month
             if right_strong or bottom_strong:
                 if right_strong:
-                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+                    _vline(draw, x + col_w - 1, y, y + row_h - 1, BLACK, width=3)
                 if bottom_strong:
-                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=BLACK, width=3)
+                    _hline(draw, x, y + row_h - 1, x + col_w - 1, BLACK, width=3)
                 if not right_strong and col < 6:
-                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                    _vline(draw, x + col_w - 1, y, y + row_h - 1, GRAY_LIGHT, width=1)
                 if not bottom_strong and week < num_weeks - 1:
-                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                    _hline(draw, x, y + row_h - 1, x + col_w - 1, GRAY_LIGHT, width=1)
             elif bw_mode:
                 # Dotted cell border — draw ONLY dots, no solid rectangle
                 if col < 6 and not right_strong:
-                    for dy in range(y, y + row_h, 8):
-                        y2 = min(dy + 2, y + row_h - 1)
-                        draw.line([(x + col_w - 1, dy), (x + col_w - 1, y2)], fill=BLACK, width=1)
+                    _vsegments(draw, x + col_w - 1, y, y + row_h - 1, BLACK, step=8, seg_len=2, width=1)
                 if week < num_weeks - 1 and not bottom_strong:
-                    for dx in range(x, x + col_w, 8):
-                        x2 = min(dx + 2, x + col_w - 1)
-                        draw.line([(dx, y + row_h - 1), (x2, y + row_h - 1)], fill=BLACK, width=1)
+                    _hsegments(draw, x, x + col_w - 1, y + row_h - 1, BLACK, step=8, seg_len=2, width=1)
                 if col == 0:
-                    for dy in range(y, y + row_h, 8):
-                        y2 = min(dy + 2, y + row_h - 1)
-                        draw.line([(x, dy), (x, y2)], fill=BLACK, width=1)
+                    _vsegments(draw, x, y, y + row_h - 1, BLACK, step=8, seg_len=2, width=1)
                 if week == 0:
-                    for dx in range(x, x + col_w, 8):
-                        x2 = min(dx + 2, x + col_w - 1)
-                        draw.line([(dx, y), (x2, y)], fill=BLACK, width=1)
+                    _hsegments(draw, x, x + col_w - 1, y, BLACK, step=8, seg_len=2, width=1)
             else:
                 # Non-bw, non-month-boundary: draw only RIGHT + BOTTOM edges
                 if col < 6:
-                    draw.line([(x + col_w - 1, y), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                    _vline(draw, x + col_w - 1, y, y + row_h - 1, GRAY_LIGHT, width=1)
                 if week < num_weeks - 1:
-                    draw.line([(x, y + row_h - 1), (x + col_w - 1, y + row_h - 1)], fill=GRAY_LIGHT, width=1)
+                    _hline(draw, x, y + row_h - 1, x + col_w - 1, GRAY_LIGHT, width=1)
 
             # Day number
             is_today = day_num == today
@@ -484,18 +514,32 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
                 top_strong = week > 0 and prev_week.month != day_num.month
                 dot_step = 27
                 dot_r = 4
-                if not top_strong:
-                    for dx in range(2, col_w - 1, dot_step):
-                        draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
-                if not bottom_strong:
-                    for dx in range(2, col_w - 1, dot_step):
-                        draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
-                if not left_strong:
-                    for dy in range(dot_step, row_h - 2, dot_step):
-                        draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
-                if not right_strong:
-                    for dy in range(dot_step, row_h - 2, dot_step):
-                        draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
+                if bw_mode:
+                    if not top_strong:
+                        for dx in range(2, col_w - 1, dot_step):
+                            draw.rectangle([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
+                    if not bottom_strong:
+                        for dx in range(2, col_w - 1, dot_step):
+                            draw.rectangle([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
+                    if not left_strong:
+                        for dy in range(dot_step, row_h - 2, dot_step):
+                            draw.rectangle([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
+                    if not right_strong:
+                        for dy in range(dot_step, row_h - 2, dot_step):
+                            draw.rectangle([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
+                else:
+                    if not top_strong:
+                        for dx in range(2, col_w - 1, dot_step):
+                            draw.ellipse([x + dx - dot_r, y - dot_r, x + dx + dot_r, y + dot_r], fill=BLACK)
+                    if not bottom_strong:
+                        for dx in range(2, col_w - 1, dot_step):
+                            draw.ellipse([x + dx - dot_r, y + row_h - 1 - dot_r, x + dx + dot_r, y + row_h - 1 + dot_r], fill=BLACK)
+                    if not left_strong:
+                        for dy in range(dot_step, row_h - 2, dot_step):
+                            draw.ellipse([x - dot_r, y + dy - dot_r, x + dot_r, y + dy + dot_r], fill=BLACK)
+                    if not right_strong:
+                        for dy in range(dot_step, row_h - 2, dot_step):
+                            draw.ellipse([x + col_w - 1 - dot_r, y + dy - dot_r, x + col_w - 1 + dot_r, y + dy + dot_r], fill=BLACK)
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
 
@@ -614,16 +658,14 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
 
     # Hour lines + labels
     for h in range(ds_h, de_h + 1):
-        y = grid_y + (h * 60 - ds_min) * minute_h
+        y = int(grid_y + (h * 60 - ds_min) * minute_h)
         if y > grid_y + grid_h:
             break
         if bw_mode:
-            # Dotted hour lines in b/w mode (alternating B/W segments)
-            for dx in range(grid_x, grid_x + days * col_w, 4):
-                x2 = min(dx + 2, grid_x + days * col_w)
-                draw.line([(dx, y), (x2, y)], fill=BLACK, width=1)
+            # Dotted hour lines in b/w mode (4px period: 2px black, 2px white)
+            _hsegments(draw, grid_x, grid_x + days * col_w, y, BLACK, step=4, seg_len=2, width=1)
         else:
-            draw.line([(grid_x, y), (grid_x + days * col_w, y)], fill=GRAY_HOUR_LINE, width=1)
+            _hline(draw, grid_x, y, grid_x + days * col_w, GRAY_HOUR_LINE, width=1)
         if time_format == "12h":
             ampm = "AM" if h < 12 else "PM"
             h12 = h % 12
@@ -642,14 +684,12 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         curr_d = start_date + datetime.timedelta(days=i)
         if prev_d.month != curr_d.month:
             # Thick line at month boundary (same in all modes)
-            draw.line([(x, sep_top), (x, grid_y + grid_h)], fill=BLACK, width=3)
+            _vline(draw, x, sep_top, grid_y + grid_h, BLACK, width=3)
         elif bw_mode:
-            # Dotted vertical day separator in b/w mode
-            for dy in range(grid_y, grid_y + grid_h, 4):
-                y2 = min(dy + 2, grid_y + grid_h)
-                draw.line([(x, dy), (x, y2)], fill=BLACK, width=1)
+            # Dotted vertical day separator in b/w mode (4px period)
+            _vsegments(draw, x, grid_y, grid_y + grid_h, BLACK, step=4, seg_len=2, width=1)
         else:
-            draw.line([(x, grid_y), (x, grid_y + grid_h)], fill=GRAY_LIGHT, width=1)
+            _vline(draw, x, grid_y, grid_y + grid_h, GRAY_LIGHT, width=1)
 
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
     dow_font = _font(40, bold=True)
@@ -775,8 +815,23 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 box_fill, box_outline = WHITE, GRAY_LIGHT
             else:
                 box_fill, box_outline = GRAY_VLIGHT, BLACK
-            draw.rounded_rectangle([xl, ey_top, xr, ey_top + eh - 1], radius=6,
-                                   fill=box_fill, outline=box_outline, width=2)
+            # Even-align the box's L/R edges to the panel's 2px column grid so
+            # each 2px vertical border fills a whole column pair. Otherwise the
+            # driver's 2px-grid snap widens an odd-aligned 2px border to 4px on
+            # some columns, making event borders look thicker on some days than
+            # others. Left edge -> even (pair bx0,bx0+1); right edge -> odd
+            # (pair bx1-1,bx1). Result: a uniform 2px border on all 7 days.
+            bx0 = int(xl) & ~1
+            bx1 = int(xr) | 1
+            by0 = int(ey_top)
+            by1 = int(ey_top + eh - 1)
+            if bw_mode:
+                # Plain sharp rectangle in b/w mode (rounded corners AA to gray)
+                draw.rectangle([bx0, by0, bx1, by1],
+                               fill=box_fill, outline=box_outline, width=2)
+            else:
+                draw.rounded_rectangle([bx0, by0, bx1, by1], radius=6,
+                                       fill=box_fill, outline=box_outline, width=2)
             # Checkerboard dim: 1px alternating B/W pattern inside dimmed boxes
             if bw_mode and is_dimmed and dim_style == "checkerboard":
                 for cy in range(int(ey_top) + 2, int(ey_top + eh - 1), 1):
@@ -881,12 +936,19 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             avail_fd_w = xr - xl - 8
             wrapped = _wrap_text_lines(draw, label, fd_font, avail_fd_w)
             display = wrapped[0] if wrapped else label[:15]
+            # Even-align L/R edges to the 2px column grid (see timed-event boxes)
+            # so the 2px vertical borders stay a uniform 2px on every day after
+            # the driver's 2px-grid snap, instead of widening to 4px on some.
+            bx0 = int(xl) & ~1
+            bx1 = int(xr) | 1
+            fy0 = int(ey - 2)
+            fy1 = int(ey + fd_h - 2)
             if bw_mode:
-                draw.rounded_rectangle([xl, ey - 2, xr, ey + fd_h - 2], radius=6,
-                                       fill=BLACK, outline=BLACK, width=2)
+                draw.rectangle([bx0, fy0, bx1, fy1],
+                               fill=BLACK, outline=BLACK, width=2)
                 draw.text((xl + 6, ey - 1), display, fill=WHITE, font=fd_font)
             else:
-                draw.rounded_rectangle([xl, ey - 2, xr, ey + fd_h - 2], radius=6,
+                draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=6,
                                        fill=GRAY_VLIGHT, outline=BLACK, width=2)
                 draw.text((xl + 6, ey - 1), display, fill=BLACK, font=fd_font)
 
@@ -1054,11 +1116,12 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
     y = grid_y + (now_min - ds_min) * minute_h
 
     # Draw the time line in the selected style
+    y = int(y)
     if style == "solid":
-        # Thick solid line with white outline
-        draw.line([(x_start, y), (x_end, y)], fill=BLACK, width=5)
-        draw.line([(x_start, y - 4), (x_end, y - 4)], fill=WHITE, width=1)
-        draw.line([(x_start, y + 4), (x_end, y + 4)], fill=WHITE, width=1)
+        # Thick solid line with white outline (exact rectangles, no AA)
+        _hline(draw, x_start, y, x_end, BLACK, width=5)
+        _hline(draw, x_start, y - 4, x_end, WHITE, width=1)
+        _hline(draw, x_start, y + 4, x_end, WHITE, width=1)
     elif style == "wavy":
         # Wavy line: sine-like pattern using small rectangles
         import math
@@ -1186,7 +1249,7 @@ def render_setup_required(lan_ip: str, port: int, ssl: bool = False) -> Image.Im
     y += 80 * scale
 
     # Separator
-    draw.line([(x, y), (W * scale - MARGIN * scale, y)], fill=GRAY_MID, width=2 * scale)
+    _hline(draw, x, y, W * scale - MARGIN * scale, GRAY_MID, width=2 * scale)
     y += 36 * scale
 
     step_font = _font(56 * scale, bold=True)

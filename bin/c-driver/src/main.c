@@ -469,6 +469,8 @@ int main(int argc, char *argv[])
     float brightness = 1.4;
     int diff_mode = -1;  /* -1 = none, 0 = soft, 1 = hard */
     int border_smooth = 20;
+    int use_4bpp = 0;
+    int du_fullscreen = 0;
     const char *text = NULL, *font_path = NULL, *image_path = NULL;
 
     static struct option long_opts[] = {
@@ -494,10 +496,12 @@ int main(int argc, char *argv[])
         {"du",             no_argument,       0, 'D'},
         {"fullscreen",     no_argument,       0, 'A'},
         {"border-smooth",  required_argument, 0, 'B'},
+        {"4bpp",            no_argument,       0, '4'},
+        {"du-fullscreen",   no_argument,       0, 'U'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "ict:f:F:m:b:gk::x::XVqGeSp:v:HODAB:h",
+    while ((opt = getopt_long(argc, argv, "ict:f:F:m:b:gk::x::XVqGeSp:v:HODAB:h4U",
                               long_opts, NULL)) != -1) {
         switch (opt) {
             case 'i': do_info = 1; break;
@@ -524,6 +528,8 @@ int main(int argc, char *argv[])
             case 'D': diff_mode = DIFF_MODE_DU; break;
             case 'A': diff_mode = DIFF_MODE_FULLSCREEN; break;
             case 'B': border_smooth = atoi(optarg); break;
+            case '4': use_4bpp = 1; break;
+            case 'U': du_fullscreen = 1; break;
             case 'h': usage(argv[0]); return 0;
             default: usage(argv[0]); return 1;
         }
@@ -572,7 +578,13 @@ int main(int argc, char *argv[])
 
     if (image_path) {
         printf("Loading image: %s\n", image_path);
-        if (diff_mode >= 0) {
+        if (du_fullscreen) {
+            printf("DU fullscreen mode\n");
+            it8951_display_image_1bit_fullscreen(&dev, image_path, 0, brightness);
+        } else if (use_4bpp) {
+            printf("4bpp mode\n");
+            it8951_display_image_4bpp(&dev, image_path, 0, brightness, GC16_MODE);
+        } else if (diff_mode >= 0) {
             printf("%s refresh (border-smooth=%d)\n",
                    diff_mode == DIFF_MODE_HARD ? "hard"
                    : (diff_mode == DIFF_MODE_FULLSCREEN ? "fullscreen"

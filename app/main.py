@@ -249,7 +249,8 @@ def do_render(force: bool = False, force_full: bool = False,
                                      update_mode=settings.get("update_mode", "soft"),
                                      refresh_border_mm=settings.get("refresh_border_mm", 5),
                                      full_refresh_repeats=full_refresh_repeats,
-                                     regional_hard_repeats=max(1, int(settings.get("regional_hard_flashes", 1))))
+                                     regional_hard_repeats=max(1, int(settings.get("regional_hard_flashes", 1))),
+                                     bw_mode=settings.get("bw_mode", False))
         if ok:
             _last_render_duration = time.time() - _render_start
             logger.info("Screen updated (events_changed=%s, %d events, %.1fs)",

@@ -30,11 +30,47 @@ _last_full_refresh = 0.0  # timestamp of last forced full refresh (set on first 
 PX_PER_MM = 11.85
 
 
+def snap_to_2px_grid(img):
+    """Collapse each horizontal column pair (2k, 2k+1) into one value.
+
+    The IT8951 panel addresses columns in 2-pixel pairs: a *split* pair
+    (one column black, the other white) can't be driven cleanly, so the panel
+    renders the mismatched column as a faint/dark echo — the "extra thin line"
+    seen on the right of odd-width lines and on text stroke edges. Making both
+    columns of every pair equal removes all split pairs, so lines and text come
+    out crisp. Darker column wins (min), so thin black features survive — a lone
+    black column is completed to a full, even-aligned 2px. No new gray levels
+    are introduced. Pure Pillow (no numpy); all work is C-speed slicing +
+    ImageChops.darker, so the per-frame cost is negligible.
+    """
+    from PIL import Image, ImageChops
+    g = img.convert("L")
+    w, h = g.size
+    orig_w = w
+    if w % 2:  # panel width is 1872 (even); pad defensively for arbitrary input
+        pad = Image.new("L", (w + 1, h), 255)
+        pad.paste(g, (0, 0))
+        g, w = pad, w + 1
+    data = g.tobytes()                 # row-major; w even => even index == even column
+    half = w // 2
+    left = Image.frombytes("L", (half, h), bytes(data[0::2]))   # cols 0,2,4,...
+    right = Image.frombytes("L", (half, h), bytes(data[1::2]))  # cols 1,3,5,...
+    pair = ImageChops.darker(left, right).tobytes()             # min of each pair
+    out = bytearray(w * h)
+    out[0::2] = pair                   # column 2k   = pair k
+    out[1::2] = pair                   # column 2k+1 = pair k  (pair never split)
+    snapped = Image.frombytes("L", (w, h), bytes(out))
+    if w != orig_w:
+        snapped = snapped.crop((0, 0, orig_w, h))
+    return snapped
+
+
 def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False,
                       smooth: bool = False, update_mode: str = "soft",
                       refresh_border_mm: float = 5,
                       full_refresh_repeats: int = 1,
-                      regional_hard_repeats: int = 1) -> bool:
+                      regional_hard_repeats: int = 1,
+                      bw_mode: bool = False) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
     update_mode: regional update flavour for non-full refreshes —
@@ -72,21 +108,30 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         return False
 
     tmp_path = config.TMP_DIR / "render.png"
+    # Snap to the panel's 2-pixel column grid so black/white transitions never
+    # split a pair (which the IT8951 renders as a faint echo on the odd column).
+    pil_image = snap_to_2px_grid(pil_image)
     pil_image.save(str(tmp_path), "PNG")
 
     # Convert mm to px for border-smooth (partial-refresh area expansion)
     border_px = int(refresh_border_mm * PX_PER_MM) if refresh_border_mm > 0 else 0
 
     # ---- Full-screen clean refresh (day change / interval / dim toggle / manual) ----
-    # --fullscreen makes the C driver do a full GC16 clean refresh and re-save
-    # the diff cache, so the next regional update has a correct baseline.
-    # Multiple passes clear ghosting more thoroughly.
+    # In b/w mode use --du-fullscreen (1-bit DU, no flash, no spreading) so
+    # thin strokes stay sharp. In grayscale mode use --fullscreen (GC16 clean
+    # refresh) to remove ghosting. Both save the diff cache for next update.
     if force_full:
         repeats = max(1, full_refresh_repeats)
-        cmd = [binary, "--image", str(tmp_path),
-               "--brightness", str(brightness),
-               "--fullscreen", "--border-smooth", "0"]
-        logger.info("Full screen GC16 clean refresh (forced, %dx)", repeats)
+        if bw_mode:
+            cmd = [binary, "--image", str(tmp_path),
+                   "--brightness", str(brightness),
+                   "--du-fullscreen"]
+            logger.info("Full screen DU clean refresh (b/w, %dx)", repeats)
+        else:
+            cmd = [binary, "--image", str(tmp_path),
+                   "--brightness", str(brightness),
+                   "--fullscreen", "--border-smooth", "0"]
+            logger.info("Full screen GC16 clean refresh (forced, %dx)", repeats)
         for i in range(repeats):
             try:
                 result = subprocess.run(
@@ -114,18 +159,18 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         return True
 
     # ---- Regional differential update (only changed region + expansion border) ----
-    # soft:   GL16, no flash — border keeps old pixels (old state preserved).
-    # hard:   white-flash the inner changed area, GL16 the region.
-    # du:     DU 1-bit, no flash, no ghosting — for b/w mode content.
+    # Since the image is always thresholded to pure B/W (both grayscale and b/w
+    # modes), use DU mode for ALL regional updates. DU fully drives e-ink
+    # particles without creating white gaps in solid black strokes (unlike
+    # GL16/GC16 which can split vertical strokes). DU has no ghosting.
+    # "hard" mode still does a flash+GL16 for users who want the flash effect.
     if update_mode == "hard":
         regional_border = min(border_px, 24)
         mode_flag = "--hard"
-    elif update_mode == "du":
+    else:
+        # soft/du: always use DU (1-bit, no flash, no gaps, no ghosting)
         regional_border = border_px
         mode_flag = "--du"
-    else:  # "soft" (default)
-        regional_border = border_px
-        mode_flag = "--soft"
     cmd = [binary, "--image", str(tmp_path),
            "--brightness", str(brightness),
            mode_flag, "--border-smooth", str(regional_border)]

@@ -1198,9 +1198,11 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 header {{ text-align: center; margin-bottom: 24px; }}
 header h1 {{ font-size: 1.6em; margin-bottom: 4px; }}
 header p {{ color: var(--muted); font-size: 0.85em; }}
-.settings-grid {{ display: grid; grid-template-columns: 1fr; gap: 16px; }}
-@media (min-width: 700px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr; }} }}
-@media (min-width: 1000px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr 1fr; }} }}
+/* Masonry-style flow: as many ~300px columns as fit — 1 on phones, 2–3 on
+   wider screens. Cards of different heights pack without leaving grid gaps. */
+.settings-grid {{ columns: 300px; column-gap: 16px; }}
+.settings-grid > .card {{ break-inside: avoid; -webkit-column-break-inside: avoid;
+  margin: 0 0 16px; }}
 .card {{ background: var(--card); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }}
 .card h2 {{ font-size: 1.05em; margin-bottom: 14px; color: var(--accent); display: flex; align-items: center; gap: 8px; }}
 .card h3 {{ font-size: 0.72em; margin: 18px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600; }}
@@ -1248,12 +1250,14 @@ input[type="range"] {{ width: 100%; }}
 {saved_html}
 
 <form id="settingsForm" action="/api/settings" method="POST">
-<div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
-  <div class="card" style="flex:1;min-width:300px">
+<div class="settings-grid">
+
+  <div class="card">
     <h2>🔐 Google Account</h2>
     {auth_section}
   </div>
-  <div class="card" style="flex:1;min-width:240px;max-width:400px">
+
+  <div class="card">
     <h2>⚡ Presets</h2>
     <div class="field">
       <label>Choose a preset</label>
@@ -1268,12 +1272,9 @@ input[type="range"] {{ width: 100%; }}
       <div class="note" id="presetDesc" style="margin-top:6px"></div>
     </div>
   </div>
-</div>
 
-<div class="settings-grid">
   <div class="card">
-    <h2>📅 Calendar &amp; Events</h2>
-    <h3>Layout</h3>
+    <h2>📅 View &amp; Layout</h2>
     <div class="field">
       <label>View Mode</label>
       <select name="view_mode">
@@ -1292,27 +1293,26 @@ input[type="range"] {{ width: 100%; }}
         <option value="3" {sel_fd_3}>3</option>
       </select>
     </div>
-    <h3>Calendars to show</h3>
+    <div class="row">
+      <div class="field"><label>Text size</label>
+        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8">
+        <div class="note">+ bigger, − smaller (px)</div>
+      </div>
+      <div class="field"><label>Brightness</label>
+        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}"
+               oninput="document.getElementById('brightVal').textContent=this.value">
+        <div class="note" style="text-align:center"><span class="range-val" id="brightVal">{brightness}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🗓 Calendars</h2>
     <div class="cal-grid">
     {cal_checkboxes}
     </div>
     {cal_error}
     <p class="note">Leave all unchecked to show every calendar.</p>
-    <h3>Checking for changes</h3>
-    <div class="field">
-      <label>Check for new events every (seconds)</label>
-      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
-      <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
-    </div>
-    <h3>Look &amp; feel</h3>
-    <label class="check-row">
-      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
-      <span>Dim past days &amp; ended events</span>
-    </label>
-    <label class="check-row">
-      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
-      <span>Dim an event once the time line passes it</span>
-    </label>
   </div>
 
   <div class="card">
@@ -1353,7 +1353,14 @@ input[type="range"] {{ width: 100%; }}
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from your IP">
       <div class="note">City name (e.g. Europe/Moscow) or UTC offset (e.g. +3).</div>
     </div>
-    <h3>Live time line</h3>
+  </div>
+
+  <div class="card">
+    <h2>⏱ Time line</h2>
+    <label class="check-row">
+      <input type="checkbox" name="show_time_line" value="1" {show_time_line}>
+      <span>Show current-time line</span>
+    </label>
     <div class="field">
       <label>Move the time line every</label>
       <select name="time_line_interval_min" id="tlInterval" onchange="updateTlWarning()">
@@ -1367,32 +1374,18 @@ input[type="range"] {{ width: 100%; }}
       <div class="note">Only used in Week &amp; 7-day views. Each tick is a small regional refresh.</div>
       <div class="note" id="tlWarning" style="display:none;color:#f59e0b;margin-top:4px">⚠️ Intervals under 30 minutes cause frequent regional updates that can slowly darken the screen over time. Use a full-screen clean refresh periodically to clear this.</div>
     </div>
+    <div class="field">
+      <label>Time-line style</label>
+      <select name="time_line_style">
+        <option value="solid" {sel_tl_style_solid}>Solid thick line</option>
+        <option value="dotted" {sel_tl_style_dotted}>Dotted (default)</option>
+        <option value="wavy" {sel_tl_style_wavy}>Wavy</option>
+      </select>
+    </div>
   </div>
 
   <div class="card">
-    <h2>🖥 Screen &amp; Refresh</h2>
-    <h3>Appearance</h3>
-    <div class="row">
-      <div class="field"><label>Contrast / brightness</label>
-        <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}"
-               oninput="document.getElementById('brightVal').textContent=this.value">
-        <div class="note" style="text-align:center"><span class="range-val" id="brightVal">{brightness}</span></div>
-      </div>
-      <div class="field"><label>Text size</label>
-        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px">
-        <div class="note">+ bigger, − smaller (px)</div>
-      </div>
-    </div>
-    <h3>Regional updates</h3>
-    <div class="field">
-      <label>Update style for small changes (time line, etc.)</label>
-      <select name="update_mode">
-        <option value="soft" {sel_um_smooth}>Soft · no flash, GL16 (may darken over time)</option>
-        <option value="hard" {sel_um_hard}>Hard · brief flash of the changed area</option>
-        <option value="du" {sel_um_du}>DU · 1-bit, no flash, zero darkening (requires b/w mode)</option>
-      </select>
-      <div class="note">Soft uses GL16 which accumulates ghosting — use periodic full refreshes to clear. DU fully drives e-ink particles with no ghosting — enable b/w mode below for best results.</div>
-    </div>
+    <h2>🎨 Display mode</h2>
     <label class="check-row">
       <input type="checkbox" name="bw_mode" value="1" {bw_mode}>
       <span>B/W mode (1-bit black/white — eliminates darkening, use with DU updates)</span>
@@ -1404,6 +1397,27 @@ input[type="range"] {{ width: 100%; }}
         <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
       </select>
     </div>
+    <label class="check-row">
+      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
+      <span>Dim past days &amp; ended events</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
+      <span>Dim an event once the time line passes it</span>
+    </label>
+  </div>
+
+  <div class="card">
+    <h2>🔄 Regional updates</h2>
+    <div class="field">
+      <label>Update style for small changes (time line, etc.)</label>
+      <select name="update_mode">
+        <option value="soft" {sel_um_smooth}>Soft · no flash, GL16 (may darken over time)</option>
+        <option value="hard" {sel_um_hard}>Hard · brief flash of the changed area</option>
+        <option value="du" {sel_um_du}>DU · 1-bit, no flash, zero darkening (requires b/w mode)</option>
+      </select>
+      <div class="note">Soft uses GL16 which accumulates ghosting — use periodic full refreshes to clear. DU fully drives e-ink particles with no ghosting — enable b/w mode for best results.</div>
+    </div>
     <div class="field">
       <label>Partial refresh area expansion</label>
       <select name="refresh_border_mm">
@@ -1414,8 +1428,26 @@ input[type="range"] {{ width: 100%; }}
         <option value="15" {sel_db_15}>15 mm · ~178 px</option>
         <option value="20" {sel_db_20}>20 mm · ~237 px</option>
       </select>
-      <div class="note">Expands the refreshed region by this much on each side. The border keeps the old content, so only the inner changed area visibly updates. Wider = more margin around the change.</div>
+      <div class="note">Expands the refreshed region by this much on each side. Only the inner changed area visibly updates.</div>
     </div>
+    <div class="field">
+      <label>Regional hard flashes</label>
+      <select name="regional_hard_flashes">
+        <option value="1" {sel_rhf_1}>1</option><option value="2" {sel_rhf_2}>2</option>
+        <option value="3" {sel_rhf_3}>3</option><option value="4" {sel_rhf_4}>4</option>
+        <option value="5" {sel_rhf_5}>5</option>
+      </select>
+      <div class="note">Flash+draw cycles when regional hard mode is active.</div>
+    </div>
+    <div class="field">
+      <label>Check for new events every (seconds)</label>
+      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
+      <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>♻️ Full-screen refresh</h2>
     <div class="field">
       <label>Full-screen clean refresh</label>
       <select name="full_refresh_interval_hours">
@@ -1437,16 +1469,14 @@ input[type="range"] {{ width: 100%; }}
     </label>
     <h3>Hard refresh passes</h3>
     <div class="row">
-      <div class="field">
-        <label>Startup / deploy</label>
+      <div class="field"><label>Startup / deploy</label>
         <select name="full_refresh_deploy">
           <option value="1" {sel_frd_1}>1</option><option value="2" {sel_frd_2}>2</option>
           <option value="3" {sel_frd_3}>3</option><option value="4" {sel_frd_4}>4</option>
           <option value="5" {sel_frd_5}>5</option>
         </select>
       </div>
-      <div class="field">
-        <label>Day change</label>
+      <div class="field"><label>Day change</label>
         <select name="full_refresh_day_change">
           <option value="1" {sel_frdc_1}>1</option><option value="2" {sel_frdc_2}>2</option>
           <option value="3" {sel_frdc_3}>3</option><option value="4" {sel_frdc_4}>4</option>
@@ -1455,16 +1485,14 @@ input[type="range"] {{ width: 100%; }}
       </div>
     </div>
     <div class="row">
-      <div class="field">
-        <label>Interval</label>
+      <div class="field"><label>Interval</label>
         <select name="full_refresh_interval">
           <option value="1" {sel_fri_1}>1</option><option value="2" {sel_fri_2}>2</option>
           <option value="3" {sel_fri_3}>3</option><option value="4" {sel_fri_4}>4</option>
           <option value="5" {sel_fri_5}>5</option>
         </select>
       </div>
-      <div class="field">
-        <label>Event end / dimming</label>
+      <div class="field"><label>Event end / dimming</label>
         <select name="full_refresh_event_end">
           <option value="1" {sel_free_1}>1</option><option value="2" {sel_free_2}>2</option>
           <option value="3" {sel_free_3}>3</option><option value="4" {sel_free_4}>4</option>
@@ -1472,40 +1500,22 @@ input[type="range"] {{ width: 100%; }}
         </select>
       </div>
     </div>
-    <div class="row">
-      <div class="field">
-        <label>Save &amp; Render (manual)</label>
-        <select name="full_refresh_manual">
-          <option value="1" {sel_frm_1}>1</option><option value="2" {sel_frm_2}>2</option>
-          <option value="3" {sel_frm_3}>3</option><option value="4" {sel_frm_4}>4</option>
-          <option value="5" {sel_frm_5}>5</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Regional hard flashes</label>
-        <select name="regional_hard_flashes">
-          <option value="1" {sel_rhf_1}>1</option><option value="2" {sel_rhf_2}>2</option>
-          <option value="3" {sel_rhf_3}>3</option><option value="4" {sel_rhf_4}>4</option>
-          <option value="5" {sel_rhf_5}>5</option>
-        </select>
-        <div class="note">Flash+draw cycles when regional hard mode is active.</div>
-      </div>
-    </div>
-    <h3>Time line</h3>
-    <label class="check-row">
-      <input type="checkbox" name="show_time_line" value="1" {show_time_line}>
-      <span>Show current-time line</span>
-    </label>
     <div class="field">
-      <label>Time-line style</label>
-      <select name="time_line_style">
-        <option value="solid" {sel_tl_style_solid}>Solid thick line</option>
-        <option value="dotted" {sel_tl_style_dotted}>Dotted (default)</option>
-        <option value="wavy" {sel_tl_style_wavy}>Wavy</option>
+      <label>Save &amp; Render (manual)</label>
+      <select name="full_refresh_manual">
+        <option value="1" {sel_frm_1}>1</option><option value="2" {sel_frm_2}>2</option>
+        <option value="3" {sel_frm_3}>3</option><option value="4" {sel_frm_4}>4</option>
+        <option value="5" {sel_frm_5}>5</option>
       </select>
     </div>
-    <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:10px">🖼 Preview the screen live</a>
   </div>
+
+  <div class="card">
+    <h2>🖼 Preview</h2>
+    <a href="/preview" class="btn btn-small" style="display:block;text-align:center">View the screen live</a>
+    <p class="note" style="margin-top:8px">See exactly what's on the e-ink from your browser.</p>
+  </div>
+
 </div>
 
 <div class="save-bar">

@@ -139,18 +139,26 @@ def render_calendar(view_mode: str, events: list[dict],
         ip_center = (title_right + sub_left) // 2
         draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
 
-    # In b/w mode, convert the final image to 1-bit.
-    # - No dimming: hard threshold → strong, crisp black text (no dithering/AA).
-    # - Dimming enabled (dim_past_events or crossed_event_dim): Floyd-Steinberg
-    #   dithering → keeps AA on dimmed/past event text for readability while
-    #   staying 1-bit for DU mode.
+    # Ensure text letters have a solid black core: any pixel darker than 80
+    # (deep gray / black from font interior) is forced to pure black (0).
+    # Only the anti-aliased edge pixels (80-254, the gray "halo" around letters)
+    # remain as-is. This prevents the "printed twice / shifted shadow" look
+    # where the letter body and its AA edge create a visible double image.
     if bw_mode:
+        # b/w mode: convert to 1-bit. Hard threshold for strong text when no
+        # dimming; Floyd-Steinberg dithering for AA when dimming is enabled.
         gray = img.convert("L")
         if dim_past_events or crossed_event_dim:
             bw = gray.convert("1", dither=Image.FLOYDSTEINBERG)
         else:
             bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
         img = bw.convert("RGB")
+    else:
+        # Grayscale mode: force deep-dark pixels to pure black (solid letter
+        # core) so AA only appears at edges, not inside the letter shape.
+        gray = img.convert("L")
+        gray = gray.point(lambda x: 0 if x < 80 else x, "L")
+        img = gray.convert("RGB")
 
     return img
 

@@ -358,26 +358,11 @@ def background_loop():
                 if now_dt.minute % tl_interval_min == 0 and now_dt.second < effective_poll:
                     should_update_tl = (now_ts - _last_time_line_render >= tl_interval)
 
-            # Skip the time-line update when the current time is outside the
-            # configured day range. Outside day_start..day_end the time-line is
-            # drawn as a static placeholder (fixed position), so there is nothing
-            # meaningful to refresh every tick — avoid unnecessary partial (or
-            # full) refreshes, especially when partial refresh is selected.
-            if should_update_tl and view_mode in ("week", "7days"):
-                day_start = s.get("day_start", "07:00")
-                day_end = s.get("day_end", "23:00")
-                ds_h, ds_m = (int(x) for x in day_start.split(":"))
-                de_h, de_m = (int(x) for x in day_end.split(":"))
-                ds_min = ds_h * 60 + ds_m
-                de_min = de_h * 60 + de_m
-                # For 1-min updates, target_now is the NEXT minute; check that too.
-                check_min = now_dt.hour * 60 + now_dt.minute
-                if tl_interval_min == 1:
-                    check_min = check_min + 1
-                if check_min < ds_min or check_min > de_min:
-                    should_update_tl = False
-                    logger.debug("Time-line placeholder outside day range (%s–%s), skipping update",
-                                 day_start, day_end)
+            # Note: the time-line is updated at the configured interval even
+            # outside day_start..day_end. Outside the visible range the line is
+            # drawn as a fixed-position placeholder, but its time label still
+            # advances so it always reflects the current time (previously it was
+            # frozen outside the day range, which looked stuck).
 
             if view_mode in ("week", "7days") and should_update_tl:
                 # For 1-min interval: render with current minute and display immediately

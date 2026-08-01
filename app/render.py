@@ -106,7 +106,7 @@ def render_calendar(view_mode: str, events: list[dict],
 
     # Draw current-time line on week/7days views
     if view_mode in ("week", "7days"):
-        _draw_time_line(draw, now, view_mode, day_start, day_end, events)
+        _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_format)
 
     # Settings URL (centered between title and subtitle on header line)
     if settings_url:
@@ -817,7 +817,7 @@ def _ev_end_time_str(ev: dict, now: datetime.datetime) -> str:
 
 
 # ---- Current-time line ----
-def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
+def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_format="24h"):
     """Draw a horizontal line at the current time position.
 
     2px black line with 1px white outline. Only drawn on the current day's column.
@@ -839,18 +839,28 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events):
 
     days = 7
 
-    # Replicate dynamic left margin from _render_day_grid
+    # Replicate dynamic left margin from _render_day_grid (must match exactly)
     hour_font = _font(26, bold=True)
     max_label_w = 0
     for h in range(ds_h, de_h + 1):
-        label = f"{h:02d}"
+        if time_format == "12h":
+            ampm = "AM" if h < 12 else "PM"
+            h12 = h % 12
+            if h12 == 0:
+                h12 = 12
+            label = f"{h12} {ampm}"
+        else:
+            label = f"{h:02d}"
         lw = _text_w(draw, label, hour_font)
         if lw > max_label_w:
             max_label_w = lw
     grid_x = max(60, max_label_w + 14)
     grid_y = HEADER_H + 50
     grid_w = W - grid_x - RIGHT_PAD
-    grid_h = H - grid_y - FOOTER_H
+    # MUST match _render_day_grid's grid_h exactly — the +20 bottom expansion
+    # affects minute_h, which determines the time-line Y position. A mismatch
+    # causes the time line to land in the wrong hour cell.
+    grid_h = H - grid_y - FOOTER_H + 20  # +~2mm bottom expansion (same as grid)
     col_w = grid_w // days
     span_min = de_min - ds_min
     if span_min <= 0:

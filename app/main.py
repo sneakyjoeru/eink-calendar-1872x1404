@@ -33,6 +33,8 @@ app = FastAPI(title="E-Ink Calendar")
 _last_events: list[dict] = []
 _last_events_hash: str = ""
 _last_time_line_render: float = 0.0
+_last_tl_minute: str = ""        # wall-clock minute key of the last time-line update (dedup)
+_last_event_poll: float = 0.0     # ts of the last event-change poll
 _last_render_date: str = ""  # track day changes for full refresh
 _render_lock = threading.Lock()
 _last_render_duration: float = 2.0  # measured render time (updated each render)
@@ -310,7 +312,7 @@ _scheduler_running = True
 
 def background_loop():
     """Background thread: poll events + update time line."""
-    global _scheduler_running, _last_time_line_render
+    global _scheduler_running, _last_time_line_render, _last_tl_minute, _last_event_poll
     logger.info("Background scheduler started")
 
     while _scheduler_running:
@@ -326,73 +328,43 @@ def background_loop():
                 time.sleep(300)
                 continue
 
-            # Event poll (checks for event changes in all views)
+            # --- Current-time line + event polling ------------------------
             poll_interval = s.get("event_poll_interval_sec", 60)
             view_mode = s.get("view_mode", "week")
-            tl_interval_min = s.get("time_line_interval_min", 15)
+            tl_interval_min = max(1, int(s.get("time_line_interval_min", 15)))
+            tl_active = view_mode in ("week", "7days") and s.get("show_time_line", True)
 
-            # For 1-min smooth updates, poll more frequently to catch the minute boundary
-            if tl_interval_min == 1 and view_mode in ("week", "7days"):
-                effective_poll = min(poll_interval, 5)
-            else:
-                effective_poll = poll_interval
-
-            # Time-line update — only for week/7days views
-            # Tied to fraction of hour: update at X:00, X:15, X:30, X:45 etc.
-            tl_interval = tl_interval_min * 60
-
-            # Determine if this poll should trigger a time-line update
             now_dt = _now()
             now_ts = time.time()
-            should_update_tl = False
 
-            if tl_interval_min == 1:
-                # 1-min: trigger when we're within 8s of the next minute boundary
-                # This gives enough time to prepare the image before :00
-                secs_to_next = 60 - now_dt.second
-                if secs_to_next <= 9 and secs_to_next > 0:
-                    last_min = datetime.datetime.fromtimestamp(_last_time_line_render).strftime("%Y-%m-%d %H:%M")
-                    next_min = (now_dt + datetime.timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
-                    should_update_tl = (last_min != next_min)
-            else:
-                # Aligned to hour: 0, 15, 30, 45 etc.
-                if now_dt.minute % tl_interval_min == 0 and now_dt.second < effective_poll:
-                    should_update_tl = (now_ts - _last_time_line_render >= tl_interval)
-
-            # Note: the time-line is updated at the configured interval even
-            # outside day_start..day_end. Outside the visible range the line is
-            # drawn as a fixed-position placeholder, but its time label still
-            # advances so it always reflects the current time (previously it was
-            # frozen outside the day range, which looked stuck).
-
-            if view_mode in ("week", "7days") and should_update_tl:
-                # For 1-min interval: render with current minute and display immediately
-                # For larger intervals: pre-render then wait for exact boundary
-                if tl_interval_min == 1:
-                    # Pre-render for the NEXT minute, then wait for :00 to display
-                    target_now = (now_dt + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+            # The time line updates at wall-clock minutes that are a whole
+            # fraction of the hour (minute % interval == 0): e.g. a 10-min
+            # interval fires at :00, :10, :20 ... This is anchored to the clock,
+            # so it is independent of when the app was (re)started. We pre-render
+            # a few seconds early and display exactly on the boundary.
+            fired_tl = False
+            if tl_active:
+                next_dt = (now_dt + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+                secs_to_next = 60 - now_dt.second - now_dt.microsecond / 1e6
+                next_key = next_dt.strftime("%Y-%m-%d %H:%M")
+                is_boundary = (next_dt.minute % tl_interval_min == 0)
+                if is_boundary and 0 < secs_to_next <= 12 and next_key != _last_tl_minute:
+                    target_now = next_dt
                     _render_start = time.time()
-
                     if not _render_lock.acquire(timeout=120):
                         pass
                     try:
                         settings = settings_store.load()
                         if settings["view_mode"] == "7days":
                             ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
-                            ev_end = ev_start + datetime.timedelta(days=7)
                         else:
-                            ev_start = target_now - datetime.timedelta(days=target_now.weekday())
-                            ev_start = ev_start.replace(hour=0, minute=0, second=0, microsecond=0)
-                            ev_end = ev_start + datetime.timedelta(days=7)
-
+                            ev_start = (target_now - datetime.timedelta(days=target_now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+                        ev_end = ev_start + datetime.timedelta(days=7)
                         events = calendar_client.fetch_events(
                             ev_start, ev_end, settings.get("selected_calendars") or None)
-
                         img = render.render_calendar(
-                            view_mode=settings["view_mode"],
-                            events=events,
-                            day_start=settings["day_start"],
-                            day_end=settings["day_end"],
+                            view_mode=settings["view_mode"], events=events,
+                            day_start=settings["day_start"], day_end=settings["day_end"],
                             max_full_day=settings["max_full_day_events"],
                             time_format=settings.get("time_format", "24h"),
                             date_format=settings.get("date_format", ""),
@@ -409,97 +381,34 @@ def background_loop():
                         )
                     finally:
                         _render_lock.release()
-
                     prepare_time = time.time() - _render_start
-
-                    # Wait for exact minute boundary (use wall clock for sleep timing))
-                    now_dt2 = datetime.datetime.now()
-                    sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
-                    if sleep_sec > 0:
+                    # wait for the exact minute boundary, then display
+                    ndt = datetime.datetime.now()
+                    sleep_sec = 60 - ndt.second - ndt.microsecond / 1e6
+                    if 0 < sleep_sec <= 60:
                         time.sleep(sleep_sec)
-
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                             force_full=False,
                                             update_mode=settings.get("update_mode", "soft"),
                                             refresh_border_mm=settings.get("refresh_border_mm", 5),
                                             bw_mode=settings.get("bw_mode", False))
+                    _last_tl_minute = next_key
                     _last_time_line_render = time.time()
-                    logger.info("Time-line regional update (1-min): prepared in %.1fs, landed at :%02d.%01d",
-                                prepare_time,
-                                int(datetime.datetime.now().second),
-                                int(datetime.datetime.now().microsecond / 100000))
-                else:
-                    # Larger interval: pre-render then wait for exact boundary
-                    _render_start = time.time()
+                    _last_event_poll = _last_time_line_render   # events were just fetched
+                    fired_tl = True
+                    logger.info("Time-line update -> %s (every %dm): prepared %.1fs, landed :%02d",
+                                next_key[-5:], tl_interval_min, prepare_time,
+                                int(datetime.datetime.now().second))
 
-                    # Compute target time = start of this interval slot
-                    target_now = now_dt.replace(second=0, microsecond=0)
+            # Event-change poll at the configured interval, independent of the
+            # time-line cadence.
+            if not fired_tl and (now_ts - _last_event_poll >= poll_interval):
+                do_render()
+                _last_event_poll = time.time()
 
-                    # --- Phase 1: fetch events + render to image (no display) ---
-                    if not _render_lock.acquire(timeout=120):
-                        pass
-                    try:
-                        settings = settings_store.load()
-                        if settings["view_mode"] == "7days":
-                            ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
-                            ev_end = ev_start + datetime.timedelta(days=7)
-                        else:
-                            ev_start = target_now - datetime.timedelta(days=target_now.weekday())
-                            ev_start = ev_start.replace(hour=0, minute=0, second=0, microsecond=0)
-                            ev_end = ev_start + datetime.timedelta(days=7)
-
-                        events = calendar_client.fetch_events(
-                            ev_start, ev_end, settings.get("selected_calendars") or None)
-
-                        img = render.render_calendar(
-                            view_mode=settings["view_mode"],
-                            events=events,
-                            day_start=settings["day_start"],
-                            day_end=settings["day_end"],
-                            max_full_day=settings["max_full_day_events"],
-                            time_format=settings.get("time_format", "24h"),
-                            date_format=settings.get("date_format", ""),
-                            settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
-                            crossed_event_dim=settings.get("crossed_event_dim", False),
-                            dim_past_events=settings.get("dim_past_events", False),
-                            text_size_modifier=settings.get("text_size_modifier", 0),
-                            show_time_line=settings.get("show_time_line", True),
-                            time_line_style=settings.get("time_line_style", "dotted"),
-                            bw_mode=settings.get("bw_mode", False),
-                            dim_style=settings.get("dim_style", "normal"),
-                            show_descriptions=settings.get("show_descriptions", True),
-                            now=target_now,
-                        )
-                    finally:
-                        _render_lock.release()
-
-                    prepare_time = time.time() - _render_start
-
-                    # --- Phase 2: wait for exact minute boundary, then display ---
-                    now_dt2 = datetime.datetime.now()
-                    sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
-                    if sleep_sec > 0:
-                        time.sleep(sleep_sec)
-
-                    display_start = time.time()
-                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
-                                            force_full=False,
-                                            update_mode=settings.get("update_mode", "soft"),
-                                            refresh_border_mm=settings.get("refresh_border_mm", 5),
-                                            bw_mode=settings.get("bw_mode", False))
-                    _last_time_line_render = time.time()
-                    display_time = _last_time_line_render - display_start
-                    logger.info("Time-line regional update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
-                                prepare_time, display_time,
-                                int(datetime.datetime.now().second),
-                                int(datetime.datetime.now().microsecond / 100000))
-            else:
-                # Regular poll for event changes (no forced refresh)
-                # Skip if smooth interval is 1 min — smooth updates already fetch events
-                if not (tl_interval_min == 1 and view_mode in ("week", "7days")):
-                    do_render()
-
-            time.sleep(effective_poll)
+            # Tick often enough to catch the pre-render window every minute when
+            # the time line is active; otherwise sleep up to the poll interval.
+            time.sleep(3 if tl_active else min(poll_interval, 30))
         except Exception as e:
             logger.error("Background loop error: %s", e)
             time.sleep(60)
@@ -665,11 +574,12 @@ async def settings_page(request: Request):
         max_fd=s["max_full_day_events"],
         tl_interval=s["time_line_interval_min"],
         sel_tl_1='selected' if s['time_line_interval_min']==1 else '',
+        sel_tl_2='selected' if s['time_line_interval_min']==2 else '',
         sel_tl_5='selected' if s['time_line_interval_min']==5 else '',
         sel_tl_10='selected' if s['time_line_interval_min']==10 else '',
         sel_tl_15='selected' if s['time_line_interval_min']==15 else '',
+        sel_tl_20='selected' if s['time_line_interval_min']==20 else '',
         sel_tl_30='selected' if s['time_line_interval_min']==30 else '',
-        sel_tl_60='selected' if s['time_line_interval_min']==60 else '',
         fr_val=s.get('full_refresh_interval_hours', 6),
         sel_fr_0='selected' if s.get('full_refresh_interval_hours', 6)==0 else '',
         sel_fr_0_5='selected' if s.get('full_refresh_interval_hours', 6)==0.5 else '',
@@ -758,6 +668,8 @@ async def settings_page(request: Request):
         cal_error=cal_error,
         lan_ip=lan_ip,
         port=config.APP_PORT,
+        preset_options=_PRESET_OPTIONS_HTML,
+        preset_descs=_PRESET_DESCS_JSON,
     )
 
 
@@ -825,62 +737,101 @@ async def trigger_render():
 
 # ---- Presets: curated setting combinations for common use cases ----
 _PRESETS = {
-    # Soft mode, grayscale, minimal darkening, periodic full clears
-    "soft_clean": {
-        "label": "Soft · Clean",
-        "desc": "Grayscale, no flash, periodic full clear. Slight darkening over time, auto-cleared.",
-        "update_mode": "soft", "bw_mode": False, "dim_style": "normal",
-        "refresh_border_mm": 5, "time_line_interval_min": 5,
-        "full_refresh_interval_hours": 2, "fullscreen_on_dim": False,
+    # 1) The balanced default (current settings) — grayscale soft, 10-min line, hourly clear
+    "gray_soft_7d_10m": {
+        "label": "7 days \u00b7 10m soft \u00b7 1h full-clear",
+        "desc": "Grayscale with soft (no-flash) regional updates. 7-day view, time line every 10 min, full clean refresh every hour. Balanced default.",
+        "view_mode": "7days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
+        "time_line_interval_min": 10, "full_refresh_interval_hours": 1,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    # Soft mode, 1-min time-line for live updates
-    "soft_live": {
-        "label": "Soft · Live (1-min)",
-        "desc": "Grayscale soft with 1-min time-line. Live updates, periodic full clear to fight darkening.",
-        "update_mode": "soft", "bw_mode": False, "dim_style": "normal",
-        "refresh_border_mm": 5, "time_line_interval_min": 1,
-        "full_refresh_interval_hours": 1, "fullscreen_on_dim": False,
+    # 2) Live grayscale
+    "gray_soft_7d_live": {
+        "label": "7 days \u00b7 1m soft live \u00b7 30m full-clear",
+        "desc": "Grayscale soft with a 1-minute live time line. Frequent full clears (every 30 min) fight the slow darkening from live updates.",
+        "view_mode": "7days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
+        "time_line_interval_min": 1, "full_refresh_interval_hours": 0.5,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    # Hard mode, grayscale, flash on each change, thorough clears
-    "hard_clean": {
-        "label": "Hard · Clean",
-        "desc": "Grayscale with flash on each change. Minimal darkening, thorough clears.",
-        "update_mode": "hard", "bw_mode": False, "dim_style": "normal",
-        "refresh_border_mm": 2, "time_line_interval_min": 5,
-        "full_refresh_interval_hours": 3, "fullscreen_on_dim": True,
+    # 3) Grayscale hard flash
+    "gray_hard_week_15m": {
+        "label": "Week \u00b7 15m hard flash \u00b7 2h full-clear",
+        "desc": "Grayscale with a brief flash on each change (less residual darkening). Week view, time line every 15 min, full clear every 2 h.",
+        "view_mode": "week", "bw_mode": False, "update_mode": "hard", "dim_style": "normal",
+        "time_line_interval_min": 15, "full_refresh_interval_hours": 2,
+        "refresh_border_mm": 2, "fullscreen_on_dim": True,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 2, "full_refresh_event_end": 2,
         "full_refresh_manual": 2, "regional_hard_flashes": 2,
     },
-    # B/W DU mode — zero darkening, 1-bit, fastest updates, checkerboard dim
-    "bw_zero": {
-        "label": "B/W · Zero dirt (checkerboard)",
-        "desc": "1-bit B/W with DU updates, checkerboard dim. Zero ghosting, fastest refresh.",
-        "update_mode": "du", "bw_mode": True, "dim_style": "checkerboard",
-        "refresh_border_mm": 5, "time_line_interval_min": 1,
-        "full_refresh_interval_hours": 6, "fullscreen_on_dim": False,
+    # 4) Low-wear grayscale
+    "gray_soft_week_slow": {
+        "label": "Week \u00b7 30m soft \u00b7 6h full-clear (low wear)",
+        "desc": "Grayscale soft, gentle on the panel: time line every 30 min, full clear only every 6 h. Fewest refreshes.",
+        "view_mode": "week", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
+        "time_line_interval_min": 30, "full_refresh_interval_hours": 6,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 2, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    # 5) B/W DU live, checkerboard
+    "bw_check_7d_live": {
+        "label": "7 days \u00b7 b/w DU \u00b7 1m live (checkerboard)",
+        "desc": "1-bit black/white with DU updates \u2014 zero ghosting, never darkens. 1-minute live time line; dimmed events use a checkerboard fill.",
+        "view_mode": "7days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
+        "time_line_interval_min": 1, "full_refresh_interval_hours": 6,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    # B/W DU mode — zero darkening, solid dim (white fill + black border)
-    "bw_solid": {
-        "label": "B/W · Zero dirt (solid dim)",
-        "desc": "1-bit B/W with DU updates, solid white dim. Zero ghosting, cleanest look.",
-        "update_mode": "du", "bw_mode": True, "dim_style": "normal",
-        "refresh_border_mm": 5, "time_line_interval_min": 1,
-        "full_refresh_interval_hours": 6, "fullscreen_on_dim": False,
+    # 6) B/W DU, solid dim, week
+    "bw_solid_week_10m": {
+        "label": "Week \u00b7 b/w DU \u00b7 10m (solid dim)",
+        "desc": "1-bit B/W DU, week view, time line every 10 min. Dimmed events use a solid white fill \u2014 the cleanest b/w look.",
+        "view_mode": "week", "bw_mode": True, "update_mode": "du", "dim_style": "normal",
+        "time_line_interval_min": 10, "full_refresh_interval_hours": 6,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    # 7) B/W DU, checkerboard, gentler cadence
+    "bw_check_7d_5m": {
+        "label": "7 days \u00b7 b/w DU \u00b7 5m (checkerboard)",
+        "desc": "1-bit B/W DU, 7-day view, time line every 5 min, checkerboard dim. Crisp with almost no full clears (every 12 h).",
+        "view_mode": "7days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
+        "time_line_interval_min": 5, "full_refresh_interval_hours": 12,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    # 8) Month
+    "gray_month_daily": {
+        "label": "Month \u00b7 daily full-clear",
+        "desc": "Month grid (no time line). Grayscale soft; a full clean refresh once a day keeps it pristine.",
+        "view_mode": "month", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
+        "time_line_interval_min": 60, "full_refresh_interval_hours": 24,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
 }
+
+# Preset <option> list and description map, generated from _PRESETS (single source)
+import json as _json
+_PRESET_OPTIONS_HTML = "".join(
+    '<option value="%s">%s</option>' % (k, p["label"]) for k, p in _PRESETS.items())
+_PRESET_DESCS_JSON = _json.dumps({k: p["desc"] for k, p in _PRESETS.items()}, ensure_ascii=False)
 
 
 @app.get("/api/preset/{name}")
@@ -1280,11 +1231,7 @@ input[type="range"] {{ width: 100%; }}
       <label>Not sure? Start from a preset</label>
       <select id="presetSelect" onchange="applyPreset()">
         <option value="">— Select —</option>
-        <option value="soft_clean">Soft · Clean</option>
-        <option value="soft_live">Soft · Live (1-min)</option>
-        <option value="hard_clean">Hard · Clean</option>
-        <option value="bw_zero">B/W · Zero dirt (checkerboard)</option>
-        <option value="bw_solid">B/W · Zero dirt (solid dim)</option>
+        {preset_options}
       </select>
       <div class="note" id="presetDesc" style="margin-top:6px"></div>
     </div>
@@ -1378,12 +1325,13 @@ input[type="range"] {{ width: 100%; }}
     <div class="field">
       <label>Move the time line every</label>
       <select name="time_line_interval_min" id="tlInterval" onchange="updateTlWarning()">
-        <option value="1" {sel_tl_1}>1 minute</option>
-        <option value="5" {sel_tl_5}>5 minutes</option>
-        <option value="10" {sel_tl_10}>10 minutes</option>
-        <option value="15" {sel_tl_15}>15 minutes</option>
-        <option value="30" {sel_tl_30}>30 minutes</option>
-        <option value="60" {sel_tl_60}>1 hour</option>
+        <option value="1" {sel_tl_1}>1 minute · every 1/60 h</option>
+        <option value="2" {sel_tl_2}>2 minutes · 1/30 h</option>
+        <option value="5" {sel_tl_5}>5 minutes · 1/12 h</option>
+        <option value="10" {sel_tl_10}>10 minutes · 1/6 h</option>
+        <option value="15" {sel_tl_15}>15 minutes · 1/4 h</option>
+        <option value="20" {sel_tl_20}>20 minutes · 1/3 h</option>
+        <option value="30" {sel_tl_30}>30 minutes · 1/2 h</option>
       </select>
       <div class="note">Only used in Week &amp; 7-day views. Each tick is a small regional refresh.</div>
       <div class="note" id="tlWarning" style="display:none;color:#f59e0b;margin-top:4px">⚠️ Intervals under 30 minutes cause frequent regional updates that can slowly darken the screen over time. Use a full-screen clean refresh periodically to clear this.</div>
@@ -1558,13 +1506,7 @@ input[type="range"] {{ width: 100%; }}
 </div>
 
 <script>
-var _presetDescs = {{
-  soft_clean: 'Grayscale, no flash, periodic full clear. Slight darkening over time, auto-cleared.',
-  soft_live: 'Grayscale soft with 1-min time-line. Live updates, periodic full clear to fight darkening.',
-  hard_clean: 'Grayscale with flash on each change. Minimal darkening, thorough clears.',
-  bw_zero: '1-bit B/W with DU updates, checkerboard dim. Zero ghosting, fastest refresh.',
-  bw_solid: '1-bit B/W with DU updates, solid white dim. Zero ghosting, cleanest look.'
-}};
+var _presetDescs = {preset_descs};
 function applyPreset() {{
   var sel = document.getElementById('presetSelect');
   var desc = document.getElementById('presetDesc');

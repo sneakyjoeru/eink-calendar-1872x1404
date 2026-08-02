@@ -928,8 +928,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             txt_x = xl + 10
 
             # Build ordered list of (text, kind) lines to render. Priority:
-            # title > time > description. Description is lowest priority and only
-            # fills whatever vertical room is left in the card.
+            # title > time > location > description. Location and description are
+            # lowest priority and only fill whatever room is left in the card.
             render_lines = []
             if summary and summary != "(No title)":
                 for line in _wrap_text_lines(draw, summary, event_font, avail_w):
@@ -938,12 +938,17 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 if render_lines:
                     render_lines.append(("", "spacer"))
                 render_lines.append((time_str, "time"))
-            desc = _clean_desc(ev.get("description", "")) if show_descriptions else ""
-            if desc:
-                if render_lines:
+            if show_descriptions:
+                loc = _clean_desc(ev.get("location", ""))
+                desc = _clean_desc(ev.get("description", ""))
+                if (loc or desc) and render_lines:
                     render_lines.append(("", "spacer"))
-                for line in _wrap_text_lines(draw, desc, event_font_sm, avail_w):
-                    render_lines.append((line, "desc"))
+                if loc:
+                    for line in _wrap_text_lines(draw, "@ " + loc, event_font_sm, avail_w):
+                        render_lines.append((line, "loc"))
+                if desc:
+                    for line in _wrap_text_lines(draw, desc, event_font_sm, avail_w):
+                        render_lines.append((line, "desc"))
 
             if not render_lines:
                 continue
@@ -973,8 +978,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             # lowest-priority description uses the same colour but a smaller,
             # thinner face so it reads as secondary.
             line_font = event_bold if (bw_mode and not is_dimmed) else event_font
-            fonts = {"title": line_font, "time": line_font, "desc": event_font_sm}
-            heights = {"title": line_h, "time": line_h, "desc": 20}
+            fonts = {"title": line_font, "time": line_font, "loc": event_font_sm, "desc": event_font_sm}
+            heights = {"title": line_h, "time": line_h, "loc": 20, "desc": 20}
 
             y = ey_top + 4
             for text, kind in render_lines:

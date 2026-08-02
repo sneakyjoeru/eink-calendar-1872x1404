@@ -5,6 +5,8 @@ an **Orange Pi Zero 2W**. Syncs with **Google Calendar** via OAuth, exposes a
 settings web UI on the LAN, and renders month / week / 7-day / 35-day views
 with a live current-time indicator line.
 
+Files for 3D printing are available at Makerworld: https://makerworld.com/en/models/3124076-eink-calendar-waveshare-it8951-1872x1404#profileId-3524658
+
 ## The device
 
 <p align="center">

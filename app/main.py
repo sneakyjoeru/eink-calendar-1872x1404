@@ -143,12 +143,14 @@ def _events_hash(events: list[dict]) -> str:
 # ---- Rendering pipeline ----
 
 def do_render(force: bool = False, force_full: bool = False,
-              full_refresh_repeats: int = 0) -> bool:
+              full_refresh_repeats: int = 0, hard_clear: bool = False) -> bool:
     """Fetch events + render + display. Thread-safe with timeout.
     force_full: bypass diff, do full screen refresh.
     full_refresh_repeats: number of full-screen GC16 clean refresh passes.
         0 = auto-determine (2 for day change, user setting for interval/dim,
-        caller-specified for startup/manual)."""
+        caller-specified for startup/manual).
+    hard_clear: force a GC16 flashing clean refresh even in b/w mode (used for
+        explicit Save & Render — automatic b/w full refreshes stay flash-free DU)."""
     logger.info("do_render(force=%s) starting", force)
     _render_start = time.time()
     if not _render_lock.acquire(timeout=120):
@@ -253,7 +255,8 @@ def do_render(force: bool = False, force_full: bool = False,
                                      refresh_border_mm=settings.get("refresh_border_mm", 5),
                                      full_refresh_repeats=full_refresh_repeats,
                                      regional_hard_repeats=max(1, int(settings.get("regional_hard_flashes", 1))),
-                                     bw_mode=settings.get("bw_mode", False))
+                                     bw_mode=settings.get("bw_mode", False),
+                                     hard_clear=hard_clear)
         if ok:
             _last_render_duration = time.time() - _render_start
             logger.info("Screen updated (events_changed=%s, %d events, %.1fs)",
@@ -882,7 +885,8 @@ def _safe_render():
     repeats = max(1, int(settings.get("full_refresh_manual", 1)))
     logger.info("Manual render triggered (full hard refresh, %dx)", repeats)
     try:
-        ok = do_render(force=True, force_full=True, full_refresh_repeats=repeats)
+        ok = do_render(force=True, force_full=True, full_refresh_repeats=repeats,
+                       hard_clear=True)
         logger.info("Manual render completed: %s", ok)
     except Exception as e:
         logger.error("Manual render failed: %s", e)

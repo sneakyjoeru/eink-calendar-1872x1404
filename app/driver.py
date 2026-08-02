@@ -70,7 +70,8 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
                       refresh_border_mm: float = 5,
                       full_refresh_repeats: int = 1,
                       regional_hard_repeats: int = 1,
-                      bw_mode: bool = False) -> bool:
+                      bw_mode: bool = False,
+                      hard_clear: bool = False) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
     update_mode: regional update flavour for non-full refreshes —
@@ -126,12 +127,16 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     # refresh) to remove ghosting. Both save the diff cache for next update.
     if force_full:
         repeats = max(1, full_refresh_repeats)
-        if bw_mode:
+        if bw_mode and not hard_clear:
+            # Automatic b/w full refresh (day change / interval / deploy): DU,
+            # no flash, thin strokes stay sharp.
             cmd = [binary, "--image", str(tmp_path),
                    "--brightness", str(brightness),
                    "--du-fullscreen"]
             logger.info("Full screen DU clean refresh (b/w, %dx)", repeats)
         else:
+            # Grayscale, OR an explicit Save & Render in b/w mode (hard_clear):
+            # GC16 clean refresh flashes the whole panel to fully clear ghosting.
             cmd = [binary, "--image", str(tmp_path),
                    "--brightness", str(brightness),
                    "--fullscreen", "--border-smooth", "0"]

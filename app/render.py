@@ -928,7 +928,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             txt_x = xl + 10
 
             # Build ordered list of (text, kind) lines to render. Priority:
-            # title > time > location > description. Location and description are
+            # title > time > description > location. Description and location are
             # lowest priority and only fill whatever room is left in the card.
             render_lines = []
             if summary and summary != "(No title)":
@@ -943,12 +943,14 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 desc = _clean_desc(ev.get("description", ""))
                 if (loc or desc) and render_lines:
                     render_lines.append(("", "spacer"))
-                if loc:
-                    for line in _wrap_text_lines(draw, "@ " + loc, event_font_sm, avail_w):
-                        render_lines.append((line, "loc"))
                 if desc:
                     for line in _wrap_text_lines(draw, desc, event_font_sm, avail_w):
                         render_lines.append((line, "desc"))
+                if loc:
+                    if desc:
+                        render_lines.append(("", "spacer"))  # small gap before location
+                    for line in _wrap_text_lines(draw, "@ " + loc, event_font_sm, avail_w):
+                        render_lines.append((line, "loc"))
 
             if not render_lines:
                 continue

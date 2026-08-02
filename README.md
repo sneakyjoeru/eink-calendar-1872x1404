@@ -26,23 +26,24 @@ with a live current-time indicator line.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│           Orange Pi Zero 2W                  │
-│  ┌─────────────┐    ┌─────────────────────┐  │
-│  │  C IT8951    │◄───│  FastAPI app         │  │
-│  │  driver      │    │  (Python)            │  │
-│  │  (binary)    │    │  - Google OAuth      │  │
-│  └─────────────┘    │  - Calendar polling  │  │
-│       │ SPI         │  - PIL rendering      │  │
-│       ▼             │  - Settings API       │  │
-│  ┌─────────────┐    │  - Live preview       │  │
-│  │  E-Ink HAT  │    └────────┬────────────┘  │
-│  │  1872×1404  │             │ HTTPS :8889   │
-│  └─────────────┘             ▼               │
-│                      ┌─────────────────────┐  │
-│                      │  LAN (QR + IP:port) │  │
-│                      └─────────────────────┘  │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ Orange Pi Zero 2W                                │
+│                                                  │
+│  ┌──────────────┐     ┌───────────────────────┐  │
+│  │ IT8951 C     │     │ FastAPI app           │  │
+│  │ driver       │◄────│ (Python + PIL)        │  │
+│  │ (binary)     │     │ - Google OAuth        │  │
+│  └──────┬───────┘     │ - Calendar sync       │  │
+│         │ SPI         │ - Settings API        │  │
+│         ▼             │ - Live preview        │  │
+│  ┌──────────────┐     └───────────────────────┘  │
+│  │ E-Ink HAT    │                 │ HTTPS :8889  │
+│  │ 1872×1404    │                 ▼              │
+│  └──────────────┘     ┌───────────────────────┐  │
+│                       │ LAN  (QR + IP:port)   │  │
+│                       └───────────────────────┘  │
+│                                                  │
+└──────────────────────────────────────────────────┘
 ```
 
 The app calls the C IT8951 binary to render each frame. Python (PIL) composes

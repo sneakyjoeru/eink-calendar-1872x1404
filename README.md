@@ -5,6 +5,23 @@ an **Orange Pi Zero 2W**. Syncs with **Google Calendar** via OAuth, exposes a
 settings web UI on the LAN, and renders month / week / 7-day / 35-day views
 with a live current-time indicator line.
 
+## Views
+
+| Week | 7 days (from today) |
+|:----:|:-------------------:|
+| ![Week view](docs/demo/week.png) | ![7-day view](docs/demo/7days.png) |
+| **Month** | **Month — 5 weeks** |
+| ![Month view](docs/demo/month.png) | ![Month 5-week view](docs/demo/month5.png) |
+
+The **week** and **7-day** views place overlapping events as cascaded cards, so
+nothing is fully hidden. In 1-bit **black & white mode** the whole UI inverts to
+crisp white-on-black — with white separators between overlapping events — for DU
+partial refresh with no ghosting:
+
+![7-day view in black & white mode](docs/demo/7days-bw.png)
+
+*(Demo images use randomly generated events.)*
+
 ## Features
 
 - 📅 **Google Calendar sync** — log in with a Google account, select which calendars to display

@@ -23,7 +23,7 @@ paper-like, no backlight, sips power. (Photos show the week view above.)
   <img src="docs/photos/eink-panel-internals-2.jpg" alt="Close-up of the Orange Pi Zero 2W stacked on the IT8951 driver HAT with ribbon cables" width="66%" />
 </p>
 
-Inside: the Orange Pi Zero 2W and the IT8951 driver HAT, wired to the panel over SPI.
+Inside: the Orange Pi Zero 2W and the IT8951 driver HAT, wired to the panel over SPI. You'll need to remove plastic pin guide and bend pins to use my 3d-printable files.
 
 ## Views
 

@@ -8,8 +8,8 @@ with a live current-time indicator line.
 ## The device
 
 <p align="center">
-  <img src="docs/photos/eink-panel-front.jpg" width="49%" alt="E-ink calendar panel, front view" />
-  <img src="docs/photos/eink-panel-angle.jpg" width="49%" alt="E-ink calendar panel, angled view" />
+  <img src="docs/photos/eink-panel-front.jpg" alt="E-ink calendar panel, front view" height="340" />
+  <img src="docs/photos/eink-panel-angle.jpg" alt="E-ink calendar panel, angled view" height="340" />
 </p>
 
 A Waveshare 7.8" e-paper panel in a 3D-printed frame, driven by an Orange Pi Zero 2W —

@@ -15,6 +15,12 @@ with a live current-time indicator line.
 A Waveshare 7.8" e-paper panel in a 3D-printed frame, driven by an Orange Pi Zero 2W —
 paper-like, no backlight, sips power. (Photos show the week view above.)
 
+<p align="center">
+  <img src="docs/photos/eink-panel-internals.jpg" alt="Inside the frame: Orange Pi Zero 2W and IT8951 driver HAT wired to the panel over SPI" width="66%" />
+</p>
+
+Inside: the Orange Pi Zero 2W and the IT8951 driver HAT, wired to the panel over SPI.
+
 ## Views
 
 | Week | 7 days (from today) |

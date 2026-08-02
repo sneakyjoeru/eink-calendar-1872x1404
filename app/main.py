@@ -1299,9 +1299,9 @@ input[type="range"] {{ width: 100%; }}
     </div>
     <label class="check-row">
       <input type="checkbox" name="show_descriptions" value="1" {show_desc}>
-      <span>Show event descriptions on cards</span>
+      <span>Show event location &amp; description on cards</span>
     </label>
-    <p class="note">Shown under the title/time when the event has one and there's room.</p>
+    <p class="note">Location (prefixed “@”) and description under the title/time, when the event has them and there's room.</p>
   </div>
 
   <div class="card">

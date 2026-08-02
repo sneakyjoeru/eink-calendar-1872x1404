@@ -5,6 +5,16 @@ an **Orange Pi Zero 2W**. Syncs with **Google Calendar** via OAuth, exposes a
 settings web UI on the LAN, and renders month / week / 7-day / 35-day views
 with a live current-time indicator line.
 
+## The device
+
+<p align="center">
+  <img src="docs/photos/eink-panel-front.jpg" width="49%" alt="E-ink calendar panel, front view" />
+  <img src="docs/photos/eink-panel-angle.jpg" width="49%" alt="E-ink calendar panel, angled view" />
+</p>
+
+A Waveshare 7.8" e-paper panel in a 3D-printed frame, driven by an Orange Pi Zero 2W —
+paper-like, no backlight, sips power. (Photos show the week view above.)
+
 ## Views
 
 | Week | 7 days (from today) |

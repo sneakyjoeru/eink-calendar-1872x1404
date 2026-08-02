@@ -737,10 +737,11 @@ async def trigger_render():
 
 # ---- Presets: curated setting combinations for common use cases ----
 _PRESETS = {
-    # 1) The balanced default (current settings) — grayscale soft, 10-min line, hourly clear
+    # ---- 7 days ----
     "gray_soft_7d_10m": {
+        "group": "7 days", "default": True,
         "label": "7 days \u00b7 10m soft \u00b7 1h full-clear",
-        "desc": "Grayscale with soft (no-flash) regional updates. 7-day view, time line every 10 min, full clean refresh every hour. Balanced default.",
+        "desc": "Grayscale with soft (no-flash) regional updates. 7-day view, time line every 10 min, full clean refresh every hour. Balanced default \u2014 your current setup.",
         "view_mode": "7days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
         "time_line_interval_min": 10, "full_refresh_interval_hours": 1,
         "refresh_border_mm": 5, "fullscreen_on_dim": False,
@@ -748,8 +749,8 @@ _PRESETS = {
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    # 2) Live grayscale
     "gray_soft_7d_live": {
+        "group": "7 days",
         "label": "7 days \u00b7 1m soft live \u00b7 30m full-clear",
         "desc": "Grayscale soft with a 1-minute live time line. Frequent full clears (every 30 min) fight the slow darkening from live updates.",
         "view_mode": "7days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
@@ -759,30 +760,8 @@ _PRESETS = {
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    # 3) Grayscale hard flash
-    "gray_hard_week_15m": {
-        "label": "Week \u00b7 15m hard flash \u00b7 2h full-clear",
-        "desc": "Grayscale with a brief flash on each change (less residual darkening). Week view, time line every 15 min, full clear every 2 h.",
-        "view_mode": "week", "bw_mode": False, "update_mode": "hard", "dim_style": "normal",
-        "time_line_interval_min": 15, "full_refresh_interval_hours": 2,
-        "refresh_border_mm": 2, "fullscreen_on_dim": True,
-        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
-        "full_refresh_interval": 2, "full_refresh_event_end": 2,
-        "full_refresh_manual": 2, "regional_hard_flashes": 2,
-    },
-    # 4) Low-wear grayscale
-    "gray_soft_week_slow": {
-        "label": "Week \u00b7 30m soft \u00b7 6h full-clear (low wear)",
-        "desc": "Grayscale soft, gentle on the panel: time line every 30 min, full clear only every 6 h. Fewest refreshes.",
-        "view_mode": "week", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
-        "time_line_interval_min": 30, "full_refresh_interval_hours": 6,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
-        "full_refresh_deploy": 2, "full_refresh_day_change": 2,
-        "full_refresh_interval": 1, "full_refresh_event_end": 1,
-        "full_refresh_manual": 1, "regional_hard_flashes": 1,
-    },
-    # 5) B/W DU live, checkerboard
     "bw_check_7d_live": {
+        "group": "7 days",
         "label": "7 days \u00b7 b/w DU \u00b7 1m live (checkerboard)",
         "desc": "1-bit black/white with DU updates \u2014 zero ghosting, never darkens. 1-minute live time line; dimmed events use a checkerboard fill.",
         "view_mode": "7days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
@@ -792,19 +771,8 @@ _PRESETS = {
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    # 6) B/W DU, solid dim, week
-    "bw_solid_week_10m": {
-        "label": "Week \u00b7 b/w DU \u00b7 10m (solid dim)",
-        "desc": "1-bit B/W DU, week view, time line every 10 min. Dimmed events use a solid white fill \u2014 the cleanest b/w look.",
-        "view_mode": "week", "bw_mode": True, "update_mode": "du", "dim_style": "normal",
-        "time_line_interval_min": 10, "full_refresh_interval_hours": 6,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
-        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
-        "full_refresh_interval": 1, "full_refresh_event_end": 1,
-        "full_refresh_manual": 1, "regional_hard_flashes": 1,
-    },
-    # 7) B/W DU, checkerboard, gentler cadence
     "bw_check_7d_5m": {
+        "group": "7 days",
         "label": "7 days \u00b7 b/w DU \u00b7 5m (checkerboard)",
         "desc": "1-bit B/W DU, 7-day view, time line every 5 min, checkerboard dim. Crisp with almost no full clears (every 12 h).",
         "view_mode": "7days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
@@ -814,12 +782,58 @@ _PRESETS = {
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    # 8) Month
+    # ---- Week ----
+    "gray_hard_week_15m": {
+        "group": "Week",
+        "label": "Week \u00b7 15m hard flash \u00b7 2h full-clear",
+        "desc": "Grayscale with a brief flash on each change (less residual darkening). Week view, time line every 15 min, full clear every 2 h.",
+        "view_mode": "week", "bw_mode": False, "update_mode": "hard", "dim_style": "normal",
+        "time_line_interval_min": 15, "full_refresh_interval_hours": 2,
+        "refresh_border_mm": 2, "fullscreen_on_dim": True,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 2, "full_refresh_event_end": 2,
+        "full_refresh_manual": 2, "regional_hard_flashes": 2,
+    },
+    "gray_soft_week_slow": {
+        "group": "Week",
+        "label": "Week \u00b7 30m soft \u00b7 6h full-clear (low wear)",
+        "desc": "Grayscale soft, gentle on the panel: time line every 30 min, full clear only every 6 h. Fewest refreshes.",
+        "view_mode": "week", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
+        "time_line_interval_min": 30, "full_refresh_interval_hours": 6,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 2, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    "bw_solid_week_10m": {
+        "group": "Week",
+        "label": "Week \u00b7 b/w DU \u00b7 10m (solid dim)",
+        "desc": "1-bit B/W DU, week view, time line every 10 min. Dimmed events use a solid white fill \u2014 the cleanest b/w look.",
+        "view_mode": "week", "bw_mode": True, "update_mode": "du", "dim_style": "normal",
+        "time_line_interval_min": 10, "full_refresh_interval_hours": 6,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    # ---- Month & 35 days ----
+    "gray_35d_daily": {
+        "group": "Month & 35 days",
+        "label": "35 days \u00b7 daily full-clear",
+        "desc": "5-week grid (35 days, Monday-start) \u2014 the closest to a 30-day overview. Grayscale soft; a full clean refresh once a day keeps it pristine.",
+        "view_mode": "35days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
+        "time_line_interval_min": 30, "full_refresh_interval_hours": 24,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
     "gray_month_daily": {
+        "group": "Month & 35 days",
         "label": "Month \u00b7 daily full-clear",
         "desc": "Month grid (no time line). Grayscale soft; a full clean refresh once a day keeps it pristine.",
         "view_mode": "month", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
-        "time_line_interval_min": 60, "full_refresh_interval_hours": 24,
+        "time_line_interval_min": 30, "full_refresh_interval_hours": 24,
         "refresh_border_mm": 5, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
@@ -827,10 +841,25 @@ _PRESETS = {
     },
 }
 
-# Preset <option> list and description map, generated from _PRESETS (single source)
+# Preset <optgroup>/<option> list and description map, generated from _PRESETS.
 import json as _json
-_PRESET_OPTIONS_HTML = "".join(
-    '<option value="%s">%s</option>' % (k, p["label"]) for k, p in _PRESETS.items())
+def _build_preset_options():
+    groups, order = {}, []
+    for k, p in _PRESETS.items():
+        g = p.get("group", "Presets")
+        if g not in groups:
+            groups[g] = []
+            order.append(g)
+        groups[g].append((k, p))
+    out = []
+    for g in order:
+        out.append('<optgroup label="%s">' % g)
+        for k, p in groups[g]:
+            sel = " selected" if p.get("default") else ""
+            out.append('<option value="%s"%s>%s</option>' % (k, sel, p["label"]))
+        out.append("</optgroup>")
+    return "".join(out)
+_PRESET_OPTIONS_HTML = _build_preset_options()
 _PRESET_DESCS_JSON = _json.dumps({k: p["desc"] for k, p in _PRESETS.items()}, ensure_ascii=False)
 
 
@@ -1228,9 +1257,8 @@ input[type="range"] {{ width: 100%; }}
   <div class="card">
     <h2>⚡ Presets</h2>
     <div class="field">
-      <label>Not sure? Start from a preset</label>
+      <label>Preset (defaults to your current setup)</label>
       <select id="presetSelect" onchange="applyPreset()">
-        <option value="">— Select —</option>
         {preset_options}
       </select>
       <div class="note" id="presetDesc" style="margin-top:6px"></div>

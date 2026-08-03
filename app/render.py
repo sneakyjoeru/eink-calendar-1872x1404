@@ -1263,24 +1263,38 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
         # Before visible range — styled indicator at 15-min mark
         y = int(grid_y + 15 * minute_h)
         _styled_time_line(draw, x_start, x_end, y, style)
-        # Time label pill
+        # Time label pill — box padding scales with font size + 3px white gap
         time_str = now.strftime("%H:%M")
         label_font = _font(26, bold=True)
         lw = _text_w(draw, time_str, label_font)
-        draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
-        draw.text((x_end - lw - 4, y - 15), time_str, fill=BLACK, font=label_font)
+        lh = _text_h(draw, time_str, label_font)
+        pad_x = lw // 4 + 3   # horizontal white gap (scales with text width)
+        pad_y = lh // 4 + 3   # vertical white gap (scales with text height)
+        box_r = x_end
+        box_l = x_end - lw - pad_x * 2
+        box_t = y - lh // 2 - pad_y
+        box_b = y + lh // 2 + pad_y
+        draw.rectangle([box_l, box_t, box_r, box_b], fill=WHITE, outline=BLACK, width=1)
+        draw.text((box_l + pad_x, y - lh // 2 - 1), time_str, fill=BLACK, font=label_font)
         return
 
     if now_min > de_min:
         # After visible range — styled indicator at 45-min mark
         y = int(grid_y + grid_h - 15 * minute_h)
         _styled_time_line(draw, x_start, x_end, y, style)
-        # Time label pill
+        # Time label pill — box padding scales with font size + 3px white gap
         time_str = now.strftime("%H:%M")
         label_font = _font(26, bold=True)
         lw = _text_w(draw, time_str, label_font)
-        draw.rectangle([x_end - lw - 8, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
-        draw.text((x_end - lw - 4, y - 15), time_str, fill=BLACK, font=label_font)
+        lh = _text_h(draw, time_str, label_font)
+        pad_x = lw // 4 + 3
+        pad_y = lh // 4 + 3
+        box_r = x_end
+        box_l = x_end - lw - pad_x * 2
+        box_t = y - lh // 2 - pad_y
+        box_b = y + lh // 2 + pad_y
+        draw.rectangle([box_l, box_t, box_r, box_b], fill=WHITE, outline=BLACK, width=1)
+        draw.text((box_l + pad_x, y - lh // 2 - 1), time_str, fill=BLACK, font=label_font)
         return
 
     y = grid_y + (now_min - ds_min) * minute_h
@@ -1289,13 +1303,20 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
     _styled_time_line(draw, x_start, x_end, int(y), style)
     y = int(y)
 
-    # Small time label at the right edge of the line
+    # Small time label at the right edge of the line — box padding scales
+    # with font size + 3px white gap between numbers and borders.
     time_str = now.strftime("%H:%M")
     label_font = _font(26, bold=True)
     lw = _text_w(draw, time_str, label_font)
-    # Background pill
-    draw.rectangle([x_end - lw - 10, y - 14, x_end, y + 14], fill=WHITE, outline=BLACK, width=1)
-    draw.text((x_end - lw - 6, y - 17), time_str, fill=BLACK, font=label_font)
+    lh = _text_h(draw, time_str, label_font)
+    pad_x = lw // 4 + 3   # horizontal white gap (scales with text width)
+    pad_y = lh // 4 + 3   # vertical white gap (scales with text height)
+    box_r = x_end
+    box_l = x_end - lw - pad_x * 2
+    box_t = y - lh // 2 - pad_y
+    box_b = y + lh // 2 + pad_y
+    draw.rectangle([box_l, box_t, box_r, box_b], fill=WHITE, outline=BLACK, width=1)
+    draw.text((box_l + pad_x, y - lh // 2 - 1), time_str, fill=BLACK, font=label_font)
 
 
 # ---- QR code screen (initial setup) ----

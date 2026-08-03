@@ -964,6 +964,13 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
             by0 = int(ey_top)
             by1 = int(ey_top + eh - 1)
             if bw_mode:
+                # For checkerboard-dimmed events, draw a white outline outside
+                # the black border first, so overlapping dimmed events are
+                # visually separated (the black border alone blends into the
+                # dithered background of the event beneath).
+                if is_dimmed and dim_style == "checkerboard":
+                    draw.rounded_rectangle([bx0 - 2, by0 - 2, bx1 + 2, by1 + 2],
+                                           radius=10, fill=WHITE, outline=WHITE, width=2)
                 # Clear the card footprint to white FIRST, then draw the rounded
                 # card. Otherwise the 4 corner triangles outside the rounded arc
                 # show whatever is beneath (an overlapping black card), filling

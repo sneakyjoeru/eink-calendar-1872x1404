@@ -250,6 +250,7 @@ def do_render(force: bool = False, force_full: bool = False,
             bw_mode=settings.get("bw_mode", False),
             dim_style=settings.get("dim_style", "normal"),
             show_descriptions=settings.get("show_descriptions", True),
+            text_outline_width=int(settings.get("text_outline_width", 5)),
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
@@ -384,6 +385,7 @@ def background_loop():
                             bw_mode=settings.get("bw_mode", False),
                             dim_style=settings.get("dim_style", "normal"),
                             show_descriptions=settings.get("show_descriptions", True),
+                            text_outline_width=int(settings.get("text_outline_width", 5)),
                             now=target_now,
                         )
                     finally:
@@ -567,6 +569,7 @@ async def settings_page(request: Request):
     dim_past = s.get("dim_past_events", False)
     crossed_dim = s.get("crossed_event_dim", False)
     ts_mod = s.get("text_size_modifier", 0)
+    outline_w = s.get("text_outline_width", 5)
 
     return _SETTINGS_HTML.format(
         saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
@@ -673,6 +676,7 @@ async def settings_page(request: Request):
         crossed_dim='checked' if crossed_dim else '',
         show_desc='checked' if s.get('show_descriptions', True) else '',
         ts_mod=ts_mod,
+        outline_w=outline_w,
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
         lan_ip=lan_ip,
@@ -728,6 +732,7 @@ async def update_settings(request: Request):
         "dim_past_events": fd.get("dim_past_events") == "1",
         "show_descriptions": fd.get("show_descriptions") == "1",
         "text_size_modifier": int(fd.get("text_size_modifier", 0)),
+        "text_outline_width": max(0, min(10, int(fd.get("text_outline_width", 5)))),
         "selected_calendars": fd.getlist("selected_calendars"),
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
@@ -1419,6 +1424,11 @@ input[type="range"] {{ width: 100%; }}
       <div class="field"><label>Text size</label>
         <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8">
         <div class="note">+ bigger, − smaller (px)</div>
+      </div>
+      <div class="field"><label>Text outline width</label>
+        <input type="range" name="text_outline_width" min="0" max="10" step="1" value="{outline_w}"
+               oninput="document.getElementById('outlineVal').textContent=this.value">
+        <div class="note" style="text-align:center">White outline around text in colored event cards (<span class="range-val" id="outlineVal">{outline_w}</span> px, 0 = off)</div>
       </div>
     </div>
     <label class="check-row">

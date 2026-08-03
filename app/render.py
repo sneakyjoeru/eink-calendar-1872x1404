@@ -6,6 +6,7 @@ Supports month / week / 7-days views with a current-time indicator line.
 import datetime
 import logging
 import math
+import random
 import re
 from typing import Optional
 
@@ -974,23 +975,27 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
             else:
                 draw.rounded_rectangle([bx0, by0, bx1, by1], radius=6,
                                        fill=box_fill, outline=box_outline, width=2)
-            # Checkerboard dim: density controlled by brightness setting.
-            # brightness 1.0 → period 2 (101010, 50% black)
-            # brightness < 1.0 → sparse black (period grows, e.g. 0.1 → period 20)
-            # brightness > 1.0 → dense black (inverted, mostly black)
+            # Checkerboard dim: random pixel dithering with density controlled
+            # by the brightness setting. Higher brightness → fewer black pixels.
+            # 1.0 = 50% black, 0.1 = ~95% black, 1.9 = ~5% black.
+            # Pixels are placed randomly per row (no diagonal pattern artifacts).
             if bw_mode and is_dimmed and dim_style == "checkerboard":
-                if brightness <= 1.0:
-                    period = max(2, round(2.0 / brightness))
-                    invert = False
-                else:
-                    period = max(2, round(2.0 / (2.0 - brightness)))
-                    invert = True
-                for cy in range(int(ey_top) + 2, int(ey_top + eh - 1), 1):
-                    for cx in range(int(xl) + 2, int(xr) - 1, 1):
-                        is_black = ((cx + cy) % period) < (period // 2)
-                        if invert:
-                            is_black = not is_black
-                        draw.point((cx, cy), fill=BLACK if is_black else WHITE)
+                # Map brightness (0.1–1.9) to black density (0.95–0.05)
+                black_density = 1.0 - (brightness - 0.1) / (1.9 - 0.1)
+                black_density = max(0.01, min(0.99, black_density))
+                fill_x_start = int(xl) + 2
+                fill_x_end = int(xr) - 1
+                fill_y_start = int(ey_top) + 2
+                fill_y_end = int(ey_top + eh - 1)
+                row_width = fill_x_end - fill_x_start
+                if row_width > 0:
+                    for cy in range(fill_y_start, fill_y_end):
+                        # Random per-row pixel placement
+                        for cx in range(fill_x_start, fill_x_end):
+                            if random.random() < black_density:
+                                draw.point((cx, cy), fill=BLACK)
+                            else:
+                                draw.point((cx, cy), fill=WHITE)
 
         # Draw text: line-by-line, skipping only lines fully inside overlap zones
         line_gap_bonus = int(8 * max(0, font_scale - 1))  # extra line spacing for larger fonts

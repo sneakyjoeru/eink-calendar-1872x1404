@@ -180,13 +180,17 @@ def render_calendar(view_mode: str, events: list[dict],
         _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format, week_num=week_num,
                       crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
                       show_descriptions=show_descriptions)
+    elif view_mode == "5days":
+        _render_5days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
+                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
+                      show_descriptions=show_descriptions)
     else:  # week (default)
         _render_week(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
                      show_descriptions=show_descriptions)
 
-    # Draw current-time line on week/7days views
-    if view_mode in ("week", "7days") and show_time_line:
+    # Draw current-time line on week/7days/5days views
+    if view_mode in ("week", "7days", "5days") and show_time_line:
         _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_format,
                         style=time_line_style)
 
@@ -198,11 +202,12 @@ def render_calendar(view_mode: str, events: list[dict],
         font_title = _font(64, bold=True)
         title_str = now.strftime(date_format) if date_format else (
             now.strftime("%B %Y") if view_mode in ("month", "35days") else (
-            now.strftime("%B %d, %Y") if view_mode == "week" else "Next 7 Days"))
+            now.strftime("%B %d, %Y") if view_mode == "week" else (
+            "Next 5 Days" if view_mode == "5days" else "Next 7 Days")))
         tw = _text_w(draw, title_str, font_title)
         title_right = MARGIN + tw
         font_sub = _font(36)
-        sub_str = f"Week {now.isocalendar()[1]}" if view_mode in ("week", "7days") else (
+        sub_str = f"Week {now.isocalendar()[1]}" if view_mode in ("week", "7days", "5days") else (
             f"Week {now.isocalendar()[1]} — 35 days" if view_mode == "35days" else "")
         if sub_str:
             sw = _text_w(draw, sub_str, font_sub)
@@ -673,8 +678,24 @@ def _render_7days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_
                      show_descriptions=show_descriptions)
 
 
-def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True):
-    """Shared day-grid renderer for week and 7-days views."""
+def _render_5days(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True):
+    """5-days view — starting from today, 5 consecutive day columns.
+    Identical layout to 7-days but with fewer, wider columns and larger fonts."""
+    if date_format:
+        title = now.strftime(date_format)
+    else:
+        title = "Next 5 Days"
+    week_num = now.isocalendar()[1]
+    ty = _fullday_title_y(draw, title, _font(64, bold=True), events, now.date(), max_full_day)
+    _draw_header(draw, title, f"Week {week_num}", title_y=ty)
+
+    _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=5, start_today=True, date_format=date_format,
+                     crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
+                     show_descriptions=show_descriptions, font_scale=1.25)
+
+
+def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True, font_scale=1.0):
+    """Shared day-grid renderer for week, 7-days, and 5-days views."""
     today = now.date()
 
     if start_today:
@@ -684,7 +705,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
         start_date = today - datetime.timedelta(days=today.weekday())
 
     # Hour lines + labels — measure widest label first for dynamic left margin
-    hour_font = _font(26, bold=True)
+    hour_font = _font(int(26 * font_scale), bold=True)
     max_label_w = 0
     for h in range(ds_h, de_h + 1):
         if time_format == "12h":
@@ -764,8 +785,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             _vline(draw, x, grid_y, grid_y + grid_h, GRAY_LIGHT, width=1)
 
     # Day headers — drawn AFTER full-day events so dates stay on top of bars
-    dow_font = _font(40, bold=True)
-    date_font = _font(40, bold=True)
+    dow_font = _font(int(40 * font_scale), bold=True)
+    date_font = _font(int(40 * font_scale), bold=True)
     # Compute baseline to center text vertically between header line (110) and grid top (170)
     _bb = draw.textbbox((0, 0), "Mon", font=dow_font)
     _line_y = 140 - (_bb[1] + _bb[3]) // 2
@@ -809,9 +830,9 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             d = d.date()
         timed_events_by_date.setdefault(d, []).append(ev)
 
-    event_font = _font(24)
-    event_bold = _font_heavy(24)   # real bold — for white-on-black text in b/w mode
-    event_font_sm = _font(18)
+    event_font = _font(int(24 * font_scale))
+    event_bold = _font_heavy(int(24 * font_scale))   # real bold — for white-on-black text in b/w mode
+    event_font_sm = _font(int(18 * font_scale))
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
         x = grid_x + i * col_w
@@ -920,7 +941,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                             draw.point((cx, cy), fill=WHITE)
 
         # Draw text: line-by-line, skipping only lines fully inside overlap zones
-        line_h = 26
+        line_h = int(26 * font_scale)
         for ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min in draw_infos:
             summary = ev.get("summary", "")
             time_str = _ev_time_str(ev, now, time_format)
@@ -981,7 +1002,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             # thinner face so it reads as secondary.
             line_font = event_bold if (bw_mode and not is_dimmed) else event_font
             fonts = {"title": line_font, "time": line_font, "loc": event_font_sm, "desc": event_font_sm}
-            heights = {"title": line_h, "time": line_h, "loc": 20, "desc": 20}
+            heights = {"title": line_h, "time": line_h, "loc": int(20 * font_scale), "desc": int(20 * font_scale)}
 
             y = ey_top + 4
             for text, kind in render_lines:
@@ -1017,8 +1038,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 y += lh
 
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)
-    fd_font = _font(24)
-    fd_h = 30  # bar height (fits 2 from header line to grid_y)
+    fd_font = _font(int(24 * font_scale))
+    fd_h = int(30 * font_scale)  # bar height (fits 2 from header line to grid_y)
     fd_step = fd_h  # no gap between stacked events
     fd_top = HEADER_H - 8  # top event's ey so its top edge touches the header separator line
     for i in range(days):
@@ -1057,7 +1078,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 # the rounded corners read against white, not the bar beneath.
                 draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=8,
                                        fill=BLACK, outline=WHITE, width=2)
-                draw.text((xl + 6, ey - 1), display, fill=WHITE, font=_font_heavy(24))
+                draw.text((xl + 6, ey - 1), display, fill=WHITE, font=_font_heavy(int(24 * font_scale)))
             else:
                 draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=6,
                                        fill=GRAY_VLIGHT, outline=BLACK, width=2)
@@ -1182,7 +1203,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
         today = now.date()
         start_date = today - datetime.timedelta(days=today.weekday())
         col_index = today.weekday()  # 0=Mon
-    else:  # 7days
+    else:  # 7days or 5days
         start_date = now.date()
         col_index = 0
 
@@ -1193,7 +1214,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
 
     now_min = now.hour * 60 + now.minute
 
-    days = 7
+    days = 5 if view_mode == "5days" else 7
 
     # Replicate dynamic left margin from _render_day_grid (must match exactly)
     hour_font = _font(26, bold=True)

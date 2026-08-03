@@ -7,7 +7,7 @@ from typing import Optional
 from . import config
 
 _DEFAULTS = {
-    "view_mode": "week",          # "month" | "35days" | "week" | "7days"
+    "view_mode": "week",          # "month" | "35days" | "week" | "7days" | "5days"
     "day_start": "07:00",         # HH:MM
     "day_end": "23:00",           # HH:MM
     "max_full_day_events": 3,     # 1-3

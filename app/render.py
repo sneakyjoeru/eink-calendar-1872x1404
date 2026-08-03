@@ -1102,13 +1102,17 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     _cw = _clip_r - _clip_l
                     _ch = _clip_b - _clip_t
                     if _cw > 0 and _ch > 0:
-                        _layer = Image.new("RGB", (_cw, _ch), (255, 255, 255))
+                        # Transparent layer: draw white text with 5px white stroke,
+                        # then paste using the layer as its own alpha mask so only
+                        # the white pixels land on the card (not a white rectangle).
+                        _layer = Image.new("RGBA", (_cw, _ch), (0, 0, 0, 0))
                         _ldraw = ImageDraw.Draw(_layer)
                         _lx = txt_x - _clip_l
                         _ly = y - _clip_t
-                        _ldraw.text((_lx, _ly), text, fill=WHITE, font=f,
-                                    stroke_width=5, stroke_fill=WHITE)
-                        img.paste(_layer, (_clip_l, _clip_t))
+                        _ldraw.text((_lx, _ly), text, fill=(255, 255, 255, 255),
+                                    font=f, stroke_width=5,
+                                    stroke_fill=(255, 255, 255, 255))
+                        img.paste(_layer, (_clip_l, _clip_t), _layer)
                 draw.text((txt_x, y), text, fill=text_fill, font=f)
                 y += lh
 

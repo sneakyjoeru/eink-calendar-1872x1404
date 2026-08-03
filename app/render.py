@@ -180,6 +180,7 @@ def render_calendar(view_mode: str, events: list[dict],
                     bw_mode: bool = False,
                     dim_style: str = "normal",
                     show_descriptions: bool = True,
+                    text_outline_width: int = 5,
                     now: Optional[datetime.datetime] = None) -> Image.Image:
     """Render the full calendar view to a PIL Image.
 
@@ -209,15 +210,15 @@ def render_calendar(view_mode: str, events: list[dict],
         week_num = now.isocalendar()[1]
         _render_7days(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format, week_num=week_num,
                       crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
-                      show_descriptions=show_descriptions)
+                      show_descriptions=show_descriptions, text_outline_width=text_outline_width)
     elif view_mode == "5days":
         _render_5days(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
                       crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
-                      show_descriptions=show_descriptions)
+                      show_descriptions=show_descriptions, text_outline_width=text_outline_width)
     else:  # week (default)
         _render_week(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format, date_format=date_format,
                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
-                     show_descriptions=show_descriptions)
+                     show_descriptions=show_descriptions, text_outline_width=text_outline_width)
 
     # Draw current-time line on week/7days/5days views
     if view_mode in ("week", "7days", "5days") and show_time_line:
@@ -688,7 +689,7 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
             day_num += datetime.timedelta(days=1)
 
 
-def _render_week(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True):
+def _render_week(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True, text_outline_width=5):
     """Week view — 7 day columns with timed events stacked vertically."""
     if date_format:
         title = now.strftime(date_format)
@@ -701,11 +702,11 @@ def _render_week(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, t
 
     _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, date_format=date_format,
                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
-                     show_descriptions=show_descriptions)
+                     show_descriptions=show_descriptions, text_outline_width=text_outline_width)
 
 
 # ---- 7-days view (next 7 days starting today) ----
-def _render_7days(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, week_num=None, bw_mode=False, dim_style="normal", show_descriptions=True):
+def _render_7days(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, week_num=None, bw_mode=False, dim_style="normal", show_descriptions=True, text_outline_width=5):
     """7-days view — starting from today, 7 consecutive day columns."""
     if date_format:
         title = now.strftime(date_format)
@@ -716,10 +717,10 @@ def _render_7days(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, 
 
     _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=7, start_today=True, date_format=date_format,
                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
-                     show_descriptions=show_descriptions)
+                     show_descriptions=show_descriptions, text_outline_width=text_outline_width)
 
 
-def _render_5days(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True):
+def _render_5days(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True, text_outline_width=5):
     """5-days view — starting from today, 5 consecutive day columns.
     Identical layout to 7-days but with fewer, wider columns and larger fonts."""
     if date_format:
@@ -732,10 +733,10 @@ def _render_5days(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, 
 
     _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format=time_format, days=5, start_today=True, date_format=date_format,
                      crossed_event_dim=crossed_event_dim, dim_past_events=dim_past_events, bw_mode=bw_mode, dim_style=dim_style,
-                     show_descriptions=show_descriptions, font_scale=1.25)
+                     show_descriptions=show_descriptions, font_scale=1.25, text_outline_width=text_outline_width)
 
 
-def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True, font_scale=1.0):
+def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, time_format="24h", days=7, start_today=False, date_format="", crossed_event_dim=False, dim_past_events=False, bw_mode=False, dim_style="normal", show_descriptions=True, font_scale=1.0, text_outline_width=5):
     """Shared day-grid renderer for week, 7-days, and 5-days views."""
     today = now.date()
 
@@ -1079,15 +1080,18 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                 if y + lh > ey_bot - 4:
                     break  # No room
                 # White text outline for contrast on colored/gray event boxes.
-                # Uses PIL stroke_width=5, drawn on a temp layer clipped to the
-                # card interior so the outline never extends past the card or
-                # damages the 2px border. Only for events with a gray/color
-                # background (grayscale normal + dimmed, b/w checkerboard dimmed).
-                if not bw_mode:
-                    _box_fill = GRAY_VLIGHT if not is_dimmed else WHITE
-                    _needs_outline = (_box_fill != WHITE)
-                elif is_dimmed and dim_style == "checkerboard":
-                    _needs_outline = True
+                # Uses PIL stroke_width=text_outline_width, drawn on a temp layer
+                # clipped to the card interior so the outline never extends past
+                # the card or damages the 2px border. Only for events with a
+                # gray/color background (grayscale normal, b/w checkerboard dimmed).
+                if text_outline_width > 0:
+                    if not bw_mode:
+                        _box_fill = GRAY_VLIGHT if not is_dimmed else WHITE
+                        _needs_outline = (_box_fill != WHITE)
+                    elif is_dimmed and dim_style == "checkerboard":
+                        _needs_outline = True
+                    else:
+                        _needs_outline = False
                 else:
                     _needs_outline = False
                 if _needs_outline:
@@ -1102,7 +1106,7 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                     _cw = _clip_r - _clip_l
                     _ch = _clip_b - _clip_t
                     if _cw > 0 and _ch > 0:
-                        # Transparent layer: draw white text with 5px white stroke,
+                        # Transparent layer: draw white text with outline stroke,
                         # then paste using the layer as its own alpha mask so only
                         # the white pixels land on the card (not a white rectangle).
                         _layer = Image.new("RGBA", (_cw, _ch), (0, 0, 0, 0))
@@ -1110,7 +1114,7 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                         _lx = txt_x - _clip_l
                         _ly = y - _clip_t
                         _ldraw.text((_lx, _ly), text, fill=(255, 255, 255, 255),
-                                    font=f, stroke_width=5,
+                                    font=f, stroke_width=text_outline_width,
                                     stroke_fill=(255, 255, 255, 255))
                         img.paste(_layer, (_clip_l, _clip_t), _layer)
                 draw.text((txt_x, y), text, fill=text_fill, font=f)

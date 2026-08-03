@@ -1013,6 +1013,10 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
         block_spacer = int(4 * font_scale) + line_gap_bonus // 2
         # Half-spacer (between time and desc/loc) — half the block spacer
         half_spacer = block_spacer // 2
+        # Collect outline + text draw commands, then render two-pass below so
+        # text always sits on top of outlines.
+        outline_cmds = []
+        text_cmds = []
         for ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min in draw_infos:
             summary = ev.get("summary", "")
             time_str = _ev_time_str(ev, now, time_format)
@@ -1107,50 +1111,49 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                         break
                 if y + lh > ey_bot - 4:
                     break  # No room
-                # White text outline for contrast on colored/gray event boxes.
-                # Uses PIL stroke_width=text_outline_width, drawn on a temp layer
-                # clipped to the card interior so the outline never extends past
-                # the card or damages the 2px border. Only for events with a
-                # gray/color background (grayscale normal, b/w checkerboard dimmed).
+                # Collect this line's outline (if any) + text for two-pass
+                # rendering: all outlines drawn first, then all text on top.
+                needs_outline = False
                 if text_outline_width > 0:
                     if not bw_mode:
                         _box_fill = GRAY_VLIGHT if not is_dimmed else WHITE
-                        _needs_outline = (_box_fill != WHITE)
+                        needs_outline = (_box_fill != WHITE)
                     elif is_dimmed and dim_style == "checkerboard":
-                        _needs_outline = True
+                        needs_outline = True
                     else:
-                        _needs_outline = False
-                else:
-                    _needs_outline = False
-                if _needs_outline:
-                    _bx0 = int(xl) & ~1
-                    _bx1 = int(xr) | 1
-                    _by0 = int(ey_top)
-                    _by1 = int(ey_top + eh - 1)
-                    # Draw the outline shifted 2px DOWN, then draw text on top.
-                    # The text covers the top of the outline; the 2px shift keeps
-                    # the outline from extending above into the previous line.
-                    # Clip to the card interior so the stroke never crosses the
-                    # 2px border.
-                    _clip_l = max(_bx0 + 2, int(xl))
-                    _clip_r = min(_bx1 - 2, int(xr))
-                    _clip_t = _by0 + 2
-                    _clip_b = _by1 - 2
-                    _cw = _clip_r - _clip_l
-                    _ch = _clip_b - _clip_t
-                    if _cw > 0 and _ch > 0:
-                        # Transparent layer: draw white text with outline stroke,
-                        # shifted 2px down, then paste with alpha mask.
-                        _layer = Image.new("RGBA", (_cw, _ch), (0, 0, 0, 0))
-                        _ldraw = ImageDraw.Draw(_layer)
-                        _lx = int(txt_x) - _clip_l
-                        _ly = int(y) - _clip_t + 2  # 2px downward shift
-                        _ldraw.text((_lx, _ly), text, fill=(255, 255, 255, 255),
-                                    font=f, stroke_width=text_outline_width,
-                                    stroke_fill=(255, 255, 255, 255))
-                        img.paste(_layer, (_clip_l, _clip_t), _layer)
-                draw.text((txt_x, y), text, fill=text_fill, font=f)
+                        needs_outline = False
+                _ox0 = int(xl) & ~1
+                _ox1 = int(xr) | 1
+                _oy0 = int(ey_top)
+                _oy1 = int(ey_top + eh - 1)
+                outline_cmds.append((needs_outline, txt_x, y, text, f, _ox0, _ox1, _oy0, _oy1))
+                text_cmds.append((txt_x, y, text, f, text_fill))
                 y += lh
+
+        # Two-pass render: draw all outlines first (shifted 2px down), then all
+        # text on top. Text is always the topmost layer, so any outline that
+        # overlaps an adjacent line's text is covered by that text.
+        for cmd in outline_cmds:
+            needs_outline, txt_x, y, text, f, _bx0, _bx1, _by0, _by1 = cmd
+            if not needs_outline:
+                continue
+            _clip_l = max(_bx0 + 2, int(txt_x) - 2)
+            _clip_r = min(_bx1 - 2, int(xr))
+            _clip_t = _by0 + 2
+            _clip_b = _by1 - 2
+            _cw = _clip_r - _clip_l
+            _ch = _clip_b - _clip_t
+            if _cw > 0 and _ch > 0:
+                _layer = Image.new("RGBA", (_cw, _ch), (0, 0, 0, 0))
+                _ldraw = ImageDraw.Draw(_layer)
+                _lx = int(txt_x) - _clip_l
+                _ly = int(y) - _clip_t + 2  # 2px downward shift
+                _ldraw.text((_lx, _ly), text, fill=(255, 255, 255, 255),
+                            font=f, stroke_width=text_outline_width,
+                            stroke_fill=(255, 255, 255, 255))
+                img.paste(_layer, (_clip_l, _clip_t), _layer)
+        for txt_x, y, text, f, text_fill in text_cmds:
+            draw.text((txt_x, y), text, fill=text_fill, font=f)
 
     # Full-day events — drawn LAST so they cover everything (day headers, timed events)
     fd_font = _font(int(24 * font_scale))

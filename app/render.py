@@ -1127,31 +1127,24 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                     _bx1 = int(xr) | 1
                     _by0 = int(ey_top)
                     _by1 = int(ey_top + eh - 1)
-                    # Clip the outline to the text glyph bounding box expanded
-                    # by text_outline_width on all sides (so the stroke expands
-                    # equally), then clamped to the card interior so it never
-                    # crosses the 2px border. textbbox returns (x0,y0,x1,y1)
-                    # relative to the draw point.
-                    _txt_bb = draw.textbbox((0, 0), text, font=f)
-                    _ow = text_outline_width
+                    # Draw the outline shifted 2px DOWN, then draw text on top.
+                    # The text covers the top of the outline; the 2px shift keeps
+                    # the outline from extending above into the previous line.
+                    # Clip to the card interior so the stroke never crosses the
+                    # 2px border.
                     _clip_l = max(_bx0 + 2, int(xl))
                     _clip_r = min(_bx1 - 2, int(xr))
-                    # Top clamped to the line start (y) so the stroke can't
-                    # extend above into the previous text line. Bottom clamped
-                    # to the line boundary (y + lh) so it can't bleed into the
-                    # next line. Left/right expand fully within the card.
-                    _clip_t = max(_by0 + 2, int(y + _txt_bb[1] - _ow), int(y))
-                    _clip_b = min(_by1 - 2, int(y + _txt_bb[3] + _ow), int(y + lh))
+                    _clip_t = _by0 + 2
+                    _clip_b = _by1 - 2
                     _cw = _clip_r - _clip_l
                     _ch = _clip_b - _clip_t
                     if _cw > 0 and _ch > 0:
                         # Transparent layer: draw white text with outline stroke,
-                        # then paste using the layer as its own alpha mask so only
-                        # the white pixels land on the card (not a white rectangle).
+                        # shifted 2px down, then paste with alpha mask.
                         _layer = Image.new("RGBA", (_cw, _ch), (0, 0, 0, 0))
                         _ldraw = ImageDraw.Draw(_layer)
                         _lx = int(txt_x) - _clip_l
-                        _ly = int(y) - _clip_t
+                        _ly = int(y) - _clip_t + 2  # 2px downward shift
                         _ldraw.text((_lx, _ly), text, fill=(255, 255, 255, 255),
                                     font=f, stroke_width=text_outline_width,
                                     stroke_fill=(255, 255, 255, 255))

@@ -1005,8 +1005,14 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                                 draw.point((cx, cy), fill=WHITE)
 
         # Draw text: line-by-line, skipping only lines fully inside overlap zones
-        line_gap_bonus = int(8 * max(0, font_scale - 1))  # extra line spacing for larger fonts
+        # Inter-line and inter-block gaps scale with font_scale so larger text
+        # gets proportionally more breathing room.
+        line_gap_bonus = int(12 * max(0, font_scale - 1))  # extra line spacing for larger fonts
         line_h = int(26 * font_scale) + line_gap_bonus
+        # Inter-block spacer scales with font_scale (base 4px at scale 1.0)
+        block_spacer = int(4 * font_scale) + line_gap_bonus // 2
+        # Half-spacer (between time and desc/loc) — half the block spacer
+        half_spacer = block_spacer // 2
         for ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min in draw_infos:
             summary = ev.get("summary", "")
             time_str = _ev_time_str(ev, now, time_format)
@@ -1076,10 +1082,10 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
             y = ey_top + 2
             for text, kind in render_lines:
                 if kind == "spacer" or not text:
-                    y += 4
+                    y += block_spacer
                     continue
                 if kind == "half_spacer":
-                    y += 2
+                    y += half_spacer
                     continue
                 lh = heights.get(kind, line_h)
                 f = fonts.get(kind, line_font)

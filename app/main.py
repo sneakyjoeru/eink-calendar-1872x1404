@@ -251,6 +251,7 @@ def do_render(force: bool = False, force_full: bool = False,
             dim_style=settings.get("dim_style", "normal"),
             show_descriptions=settings.get("show_descriptions", True),
             text_outline_width=int(settings.get("text_outline_width", 5)),
+            brightness=settings.get("brightness", 1.4),
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
@@ -386,6 +387,7 @@ def background_loop():
                             dim_style=settings.get("dim_style", "normal"),
                             show_descriptions=settings.get("show_descriptions", True),
                             text_outline_width=int(settings.get("text_outline_width", 5)),
+                            brightness=settings.get("brightness", 1.4),
                             now=target_now,
                         )
                     finally:

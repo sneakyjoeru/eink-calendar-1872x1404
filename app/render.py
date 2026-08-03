@@ -1006,6 +1006,10 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 desc = _clean_desc(ev.get("description", ""))
                 if (loc or desc) and render_lines:
                     render_lines.append(("", "spacer"))
+                # Extra half-distance (2px) between time and description/location,
+                # only when both description and location are present.
+                if desc and loc and render_lines:
+                    render_lines.append(("", "half_spacer"))
                 if desc:
                     for line in _wrap_text_lines(draw, desc, event_font_sm, avail_w):
                         render_lines.append((line, "desc"))
@@ -1050,6 +1054,9 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             for text, kind in render_lines:
                 if kind == "spacer" or not text:
                     y += 4
+                    continue
+                if kind == "half_spacer":
+                    y += 2
                     continue
                 lh = heights.get(kind, line_h)
                 f = fonts.get(kind, line_font)

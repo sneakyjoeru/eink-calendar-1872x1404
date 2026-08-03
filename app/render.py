@@ -1136,8 +1136,12 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                     _ow = text_outline_width
                     _clip_l = max(_bx0 + 2, int(xl))
                     _clip_r = min(_bx1 - 2, int(xr))
+                    # Expand clip by stroke width on top, left, right (symmetric).
+                    # Bottom is clamped to the line boundary (y + lh) so the stroke
+                    # can't bleed into the next text line below, regardless of the
+                    # outline width setting.
                     _clip_t = max(_by0 + 2, int(y + _txt_bb[1] - _ow))
-                    _clip_b = min(_by1 - 2, int(y + _txt_bb[3] + _ow))
+                    _clip_b = min(_by1 - 2, int(y + _txt_bb[3] + _ow), int(y + lh))
                     _cw = _clip_r - _clip_l
                     _ch = _clip_b - _clip_t
                     if _cw > 0 and _ch > 0:

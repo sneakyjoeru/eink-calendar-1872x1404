@@ -1275,7 +1275,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
         box_t = y - lh // 2 - pad_y
         box_b = y + lh // 2 + pad_y
         draw.rectangle([box_l, box_t, box_r, box_b], fill=WHITE, outline=BLACK, width=1)
-        draw.text((box_l + pad_x, y - lh // 2 - 1), time_str, fill=BLACK, font=label_font)
+        draw.text(((box_l + box_r) // 2, (box_t + box_b) // 2), time_str, fill=BLACK, font=label_font, anchor="mm")
         return
 
     if now_min > de_min:
@@ -1294,7 +1294,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
         box_t = y - lh // 2 - pad_y
         box_b = y + lh // 2 + pad_y
         draw.rectangle([box_l, box_t, box_r, box_b], fill=WHITE, outline=BLACK, width=1)
-        draw.text((box_l + pad_x, y - lh // 2 - 1), time_str, fill=BLACK, font=label_font)
+        draw.text(((box_l + box_r) // 2, (box_t + box_b) // 2), time_str, fill=BLACK, font=label_font, anchor="mm")
         return
 
     y = grid_y + (now_min - ds_min) * minute_h
@@ -1316,7 +1316,7 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
     box_t = y - lh // 2 - pad_y
     box_b = y + lh // 2 + pad_y
     draw.rectangle([box_l, box_t, box_r, box_b], fill=WHITE, outline=BLACK, width=1)
-    draw.text((box_l + pad_x, y - lh // 2 - 1), time_str, fill=BLACK, font=label_font)
+    draw.text(((box_l + box_r) // 2, (box_t + box_b) // 2), time_str, fill=BLACK, font=label_font, anchor="mm")
 
 
 # ---- QR code screen (initial setup) ----

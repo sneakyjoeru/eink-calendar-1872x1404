@@ -1238,9 +1238,8 @@ header p {{ color: var(--muted); font-size: 0.85em; }}
 .settings-grid {{ columns: 300px; column-gap: 16px; }}
 .settings-grid > .card {{ break-inside: avoid; -webkit-column-break-inside: avoid;
   margin: 0 0 16px; }}
-/* Google Account + Presets pinned side by side on wide screens, stacked on phone */
-.top-row {{ display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }}
-@media (min-width: 700px) {{ .top-row {{ grid-template-columns: 1fr 1fr; }} }}
+/* Google Account pinned at top, full width */
+.top-row {{ margin-bottom: 16px; }}
 .card {{ background: var(--card); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }}
 .card h2 {{ font-size: 1.05em; margin-bottom: 14px; color: var(--accent); display: flex; align-items: center; gap: 8px; }}
 .card h3 {{ font-size: 0.72em; margin: 18px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600; }}
@@ -1278,6 +1277,14 @@ input[type="range"] {{ width: 100%; }}
 .note {{ font-size: 0.74em; color: var(--muted); margin-top: 4px; }}
 .range-val {{ display: inline-block; background: var(--input); padding: 2px 8px; border-radius: 6px; font-size: 0.8em; font-weight: 600; }}
 .save-bar {{ position: sticky; bottom: 0; margin: 20px -20px 0; padding: 16px 20px; background: linear-gradient(180deg, transparent, var(--bg) 30%); }}
+/* Tabs */
+.tabs {{ display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid var(--border); }}
+.tab-btn {{ padding: 12px 20px; border: none; background: none; color: var(--muted); cursor: pointer;
+  font-size: 0.95em; font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all .15s; }}
+.tab-btn:hover {{ color: var(--text); }}
+.tab-btn.active {{ color: var(--accent); border-bottom-color: var(--accent); }}
+.tab-panel {{ display: none; }}
+.tab-panel.active {{ display: block; }}
 </style>
 </head>
 <body>
@@ -1293,19 +1300,16 @@ input[type="range"] {{ width: 100%; }}
     <h2>🔐 Google Account</h2>
     {auth_section}
   </div>
-
-  <div class="card">
-    <h2>⚡ Presets</h2>
-    <div class="field">
-      <label>Preset (defaults to your current setup)</label>
-      <select id="presetSelect" onchange="applyPreset()">
-        {preset_options}
-      </select>
-      <div class="note" id="presetDesc" style="margin-top:6px"></div>
-    </div>
-  </div>
 </div>
 
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab(0)">📅 Calendar</button>
+  <button class="tab-btn" onclick="switchTab(1)">🎨 Appearance</button>
+  <button class="tab-btn" onclick="switchTab(2)">🔧 Advanced</button>
+</div>
+
+<!-- Tab 0: Calendar -->
+<div class="tab-panel active" id="tab0">
 <div class="settings-grid">
 
   <div class="card">
@@ -1415,6 +1419,13 @@ input[type="range"] {{ width: 100%; }}
     </div>
   </div>
 
+</div>
+</div>
+
+<!-- Tab 1: Appearance -->
+<div class="tab-panel" id="tab1">
+<div class="settings-grid">
+
   <div class="card">
     <h2>🎨 Appearance</h2>
     <div class="row">
@@ -1456,7 +1467,31 @@ input[type="range"] {{ width: 100%; }}
   </div>
 
   <div class="card">
-    <h2>🔧 Screen updates</h2>
+    <h2>� Preview</h2>
+    <a href="/preview" class="btn btn-small" style="display:block;text-align:center">View the screen live</a>
+    <p class="note" style="margin-top:8px">See exactly what's on the e-ink from your browser.</p>
+  </div>
+
+</div>
+</div>
+
+<!-- Tab 2: Advanced -->
+<div class="tab-panel" id="tab2">
+<div class="settings-grid">
+
+  <div class="card">
+    <h2>⚡ Presets</h2>
+    <div class="field">
+      <label>Preset (defaults to your current setup)</label>
+      <select id="presetSelect2" onchange="applyPreset2()">
+        {preset_options}
+      </select>
+      <div class="note" id="presetDesc2" style="margin-top:6px"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>�🔧 Screen updates</h2>
     <p class="note" style="margin-top:-8px;margin-bottom:12px">Advanced — most people can just use a Preset.</p>
     <div class="field">
       <label>Update style for small changes (time line, etc.)</label>
@@ -1561,12 +1596,7 @@ input[type="range"] {{ width: 100%; }}
     </div>
   </div>
 
-  <div class="card">
-    <h2>🖼 Preview</h2>
-    <a href="/preview" class="btn btn-small" style="display:block;text-align:center">View the screen live</a>
-    <p class="note" style="margin-top:8px">See exactly what's on the e-ink from your browser.</p>
-  </div>
-
+</div>
 </div>
 
 <div class="save-bar">
@@ -1581,9 +1611,33 @@ input[type="range"] {{ width: 100%; }}
 
 <script>
 var _presetDescs = {preset_descs};
+function switchTab(n) {{
+  document.querySelectorAll('.tab-btn').forEach(function(b, i) {{
+    b.classList.toggle('active', i === n);
+  }});
+  document.querySelectorAll('.tab-panel').forEach(function(p, i) {{
+    p.classList.toggle('active', i === n);
+  }});
+}}
 function applyPreset() {{
   var sel = document.getElementById('presetSelect');
   var desc = document.getElementById('presetDesc');
+  var val = sel.value;
+  if (val && _presetDescs[val]) {{
+    desc.textContent = _presetDescs[val];
+    if (confirm('Apply this preset? This overwrites your refresh settings.')) {{
+      location.href = '/api/preset/' + val;
+    }} else {{
+      sel.value = '';
+      desc.textContent = '';
+    }}
+  }} else {{
+    desc.textContent = '';
+  }}
+}}
+function applyPreset2() {{
+  var sel = document.getElementById('presetSelect2');
+  var desc = document.getElementById('presetDesc2');
   var val = sel.value;
   if (val && _presetDescs[val]) {{
     desc.textContent = _presetDescs[val];

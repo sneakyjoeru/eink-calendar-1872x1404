@@ -941,7 +941,8 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                             draw.point((cx, cy), fill=WHITE)
 
         # Draw text: line-by-line, skipping only lines fully inside overlap zones
-        line_h = int(26 * font_scale)
+        line_gap_bonus = int(8 * max(0, font_scale - 1))  # extra line spacing for larger fonts
+        line_h = int(26 * font_scale) + line_gap_bonus
         for ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min in draw_infos:
             summary = ev.get("summary", "")
             time_str = _ev_time_str(ev, now, time_format)
@@ -1002,7 +1003,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             # thinner face so it reads as secondary.
             line_font = event_bold if (bw_mode and not is_dimmed) else event_font
             fonts = {"title": line_font, "time": line_font, "loc": event_font_sm, "desc": event_font_sm}
-            heights = {"title": line_h, "time": line_h, "loc": int(20 * font_scale), "desc": int(20 * font_scale)}
+            heights = {"title": line_h, "time": line_h, "loc": int(20 * font_scale) + line_gap_bonus, "desc": int(20 * font_scale) + line_gap_bonus}
 
             y = ey_top + 4
             for text, kind in render_lines:
@@ -1078,11 +1079,11 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                 # the rounded corners read against white, not the bar beneath.
                 draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=8,
                                        fill=BLACK, outline=WHITE, width=2)
-                draw.text((xl + 6, ey - 1), display, fill=WHITE, font=_font_heavy(int(24 * font_scale)))
+                draw.text((xl + 6, ey - 3), display, fill=WHITE, font=_font_heavy(int(24 * font_scale)))
             else:
                 draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=6,
                                        fill=GRAY_VLIGHT, outline=BLACK, width=2)
-                draw.text((xl + 6, ey - 1), display, fill=BLACK, font=fd_font)
+                draw.text((xl + 6, ey - 3), display, fill=BLACK, font=fd_font)
 
 
 def _wrap_text_lines(draw, text, font, max_w):

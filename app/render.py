@@ -1078,11 +1078,37 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                         break
                 if y + lh > ey_bot - 4:
                     break  # No room
-                # For checkerboard-dimmed events, draw a white outline behind
-                # the black text so it's readable on both B and W checker pixels
-                if bw_mode and is_dimmed and dim_style == "checkerboard":
-                    for ox, oy in [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]:
-                        draw.text((txt_x + ox, y + oy), text, fill=WHITE, font=f)
+                # White text outline for contrast on colored/gray event boxes.
+                # Uses PIL stroke_width=5, drawn on a temp layer clipped to the
+                # card interior so the outline never extends past the card or
+                # damages the 2px border. Only for events with a gray/color
+                # background (grayscale normal + dimmed, b/w checkerboard dimmed).
+                if not bw_mode:
+                    _box_fill = GRAY_VLIGHT if not is_dimmed else WHITE
+                    _needs_outline = (_box_fill != WHITE)
+                elif is_dimmed and dim_style == "checkerboard":
+                    _needs_outline = True
+                else:
+                    _needs_outline = False
+                if _needs_outline:
+                    _bx0 = int(xl) & ~1
+                    _bx1 = int(xr) | 1
+                    _by0 = int(ey_top)
+                    _by1 = int(ey_top + eh - 1)
+                    _clip_l = _bx0 + 2
+                    _clip_t = _by0 + 2
+                    _clip_r = _bx1 - 2
+                    _clip_b = _by1 - 2
+                    _cw = _clip_r - _clip_l
+                    _ch = _clip_b - _clip_t
+                    if _cw > 0 and _ch > 0:
+                        _layer = Image.new("RGB", (_cw, _ch), (255, 255, 255))
+                        _ldraw = ImageDraw.Draw(_layer)
+                        _lx = txt_x - _clip_l
+                        _ly = y - _clip_t
+                        _ldraw.text((_lx, _ly), text, fill=WHITE, font=f,
+                                    stroke_width=5, stroke_fill=WHITE)
+                        img.paste(_layer, (_clip_l, _clip_t))
                 draw.text((txt_x, y), text, fill=text_fill, font=f)
                 y += lh
 

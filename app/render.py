@@ -1135,8 +1135,8 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                     _txt_bb = draw.textbbox((0, 0), text, font=f)
                     _clip_l = max(_bx0 + 2, int(xl))
                     _clip_r = min(_bx1 - 2, int(xr))
-                    _clip_t = max(_by0 + 2, y + _txt_bb[1])
-                    _clip_b = min(_by1 - 2, y + _txt_bb[3])
+                    _clip_t = max(_by0 + 2, int(y + _txt_bb[1]))
+                    _clip_b = min(_by1 - 2, int(y + _txt_bb[3]))
                     _cw = _clip_r - _clip_l
                     _ch = _clip_b - _clip_t
                     if _cw > 0 and _ch > 0:
@@ -1145,8 +1145,8 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                         # the white pixels land on the card (not a white rectangle).
                         _layer = Image.new("RGBA", (_cw, _ch), (0, 0, 0, 0))
                         _ldraw = ImageDraw.Draw(_layer)
-                        _lx = txt_x - _clip_l
-                        _ly = y - _clip_t
+                        _lx = int(txt_x) - _clip_l
+                        _ly = int(y) - _clip_t
                         _ldraw.text((_lx, _ly), text, fill=(255, 255, 255, 255),
                                     font=f, stroke_width=text_outline_width,
                                     stroke_fill=(255, 255, 255, 255))

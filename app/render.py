@@ -91,6 +91,36 @@ def _clean_desc(s: str) -> str:
     return s[:200]
 
 
+def _clean_location(s: str) -> str:
+    """Shorten a Google Calendar location to just the building name or street
+    address — drop postal code, city, state, and country.
+
+    Google locations are typically comma-separated, e.g.:
+      "Conference Room A, 123 Main St, Springfield, IL 62704, USA"
+    The first comma-separated part is usually a building/room name. If it
+    looks like a street address (contains a number), keep the first two parts
+    (number + street). Otherwise keep just the first part. Postal codes
+    (\\d{4,6}) and country names are always stripped from the result."""
+    if not s:
+        return ""
+    s = _clean_desc(s)
+    if not s:
+        return ""
+    parts = [p.strip() for p in s.split(",") if p.strip()]
+    if not parts:
+        return ""
+    # If the first part looks like a street address (starts with a number),
+    # keep building + street (first two parts).
+    import re as _re
+    if _re.match(r"^\d+\b", parts[0]) and len(parts) >= 2:
+        result = parts[0] + ", " + parts[1]
+    else:
+        result = parts[0]
+    # Strip any trailing postal code or country fragment that survived
+    result = _re.sub(r"\b\d{4,6}\b", "", result).strip(" ,")
+    return result
+
+
 # ---- Exact (non-antialiased) drawing helpers for b/w mode ----
 def _hline(draw, x0: int, y: int, x1: int, fill, width: int = 1):
     """Draw a horizontal line using rectangle fill (no PIL line AA)."""
@@ -972,7 +1002,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
                     render_lines.append(("", "spacer"))
                 render_lines.append((time_str, "time"))
             if show_descriptions:
-                loc = _clean_desc(ev.get("location", ""))
+                loc = _clean_location(ev.get("location", ""))
                 desc = _clean_desc(ev.get("description", ""))
                 if (loc or desc) and render_lines:
                     render_lines.append(("", "spacer"))

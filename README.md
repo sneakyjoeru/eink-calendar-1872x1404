@@ -47,7 +47,7 @@ partial refresh with no ghosting:
 ## Features
 
 - 📅 **Google Calendar sync** — log in with a Google account, select which calendars to display
-- 🖥️ **Four view modes** — Month, Month (5 weeks), Week, 7-days (from today)
+- 🖥️ **Five view modes** — Month, Month (5 weeks), Week, 7-days (from today), 5-days (from today, larger fonts)
 - ⏰ **Configurable day span** — set start/end-of-day times
 - 📋 **Full-day events** — display 0–3 full-day events per day, stacked vertically
 - 📍 **Current-time line** — striped line with time label, auto-updates at configurable intervals (1 min – 60 min)
@@ -165,7 +165,7 @@ at `https://<pi-ip>:8889/settings`:
 
 | Setting | Options | Default | Description |
 |---------|---------|---------|-------------|
-| View mode | `month`, `35days`, `week`, `7days` | `week` | Calendar layout |
+| View mode | `month`, `35days`, `week`, `7days`, `5days` | `week` | Calendar layout |
 | Day start | `HH:MM` | `07:00` | Start of displayed time range |
 | Day end | `HH:MM` | `23:00` | End of displayed time range |
 | Time format | `24h`, `12h` | `24h` | Hour label format |

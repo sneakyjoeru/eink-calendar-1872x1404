@@ -172,6 +172,9 @@ def do_render(force: bool = False, force_full: bool = False,
         elif settings["view_mode"] == "7days":
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start + datetime.timedelta(days=7)
+        elif settings["view_mode"] == "5days":
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + datetime.timedelta(days=5)
         else:  # week
             start = now - datetime.timedelta(days=now.weekday())
             start = start.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -335,7 +338,7 @@ def background_loop():
             poll_interval = s.get("event_poll_interval_sec", 60)
             view_mode = s.get("view_mode", "week")
             tl_interval_min = max(1, int(s.get("time_line_interval_min", 15)))
-            tl_active = view_mode in ("week", "7days") and s.get("show_time_line", True)
+            tl_active = view_mode in ("week", "7days", "5days") and s.get("show_time_line", True)
 
             now_dt = _now()
             now_ts = time.time()
@@ -358,11 +361,12 @@ def background_loop():
                         pass
                     try:
                         settings = settings_store.load()
-                        if settings["view_mode"] == "7days":
+                        if settings["view_mode"] in ("7days", "5days"):
                             ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
                         else:
                             ev_start = (target_now - datetime.timedelta(days=target_now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-                        ev_end = ev_start + datetime.timedelta(days=7)
+                        ev_days = 5 if settings["view_mode"] == "5days" else 7
+                        ev_end = ev_start + datetime.timedelta(days=ev_days)
                         events = calendar_client.fetch_events(
                             ev_start, ev_end, settings.get("selected_calendars") or None)
                         img = render.render_calendar(
@@ -542,6 +546,7 @@ async def settings_page(request: Request):
     sel_35days = "selected" if s["view_mode"] == "35days" else ""
     sel_week = "selected" if s["view_mode"] == "week" else ""
     sel_7days = "selected" if s["view_mode"] == "7days" else ""
+    sel_5days = "selected" if s["view_mode"] == "5days" else ""
     sel_24h = "selected" if s.get("time_format", "24h") == "24h" else ""
     sel_12h = "selected" if s.get("time_format", "24h") == "12h" else ""
     tz = s.get("timezone", "")
@@ -570,6 +575,7 @@ async def settings_page(request: Request):
         sel_35days=sel_35days,
         sel_week=sel_week,
         sel_7days=sel_7days,
+        sel_5days=sel_5days,
         sel_24h=sel_24h,
         sel_12h=sel_12h,
         day_start=s["day_start"],
@@ -780,6 +786,29 @@ _PRESETS = {
         "desc": "1-bit B/W DU, 7-day view, time line every 5 min, checkerboard dim. Crisp with almost no full clears (every 12 h).",
         "view_mode": "7days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
         "time_line_interval_min": 5, "full_refresh_interval_hours": 12,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    # ---- 5 days ----
+    "gray_soft_5d_10m": {
+        "group": "5 days",
+        "label": "5 days \u00b7 10m soft \u00b7 1h full-clear",
+        "desc": "Grayscale with soft (no-flash) regional updates. 5-day view with larger fonts, time line every 10 min, full clean refresh every hour.",
+        "view_mode": "5days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
+        "time_line_interval_min": 10, "full_refresh_interval_hours": 1,
+        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
+        "full_refresh_interval": 1, "full_refresh_event_end": 1,
+        "full_refresh_manual": 1, "regional_hard_flashes": 1,
+    },
+    "bw_check_5d_live": {
+        "group": "5 days",
+        "label": "5 days \u00b7 b/w DU \u00b7 1m live (checkerboard)",
+        "desc": "1-bit black/white with DU updates \u2014 zero ghosting, never darkens. 5-day view with larger fonts, 1-minute live time line, checkerboard dim.",
+        "view_mode": "5days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
+        "time_line_interval_min": 1, "full_refresh_interval_hours": 6,
         "refresh_border_mm": 5, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
@@ -1290,6 +1319,7 @@ input[type="range"] {{ width: 100%; }}
         <option value="35days" {sel_35days}>Month (5 weeks, Mon-start)</option>
         <option value="week" {sel_week}>Week (Mon–Sun)</option>
         <option value="7days" {sel_7days}>7 Days (from today)</option>
+        <option value="5days" {sel_5days}>5 Days (from today)</option>
       </select>
     </div>
     <div class="field">
@@ -1365,7 +1395,7 @@ input[type="range"] {{ width: 100%; }}
         <option value="20" {sel_tl_20}>20 minutes · 1/3 h</option>
         <option value="30" {sel_tl_30}>30 minutes · 1/2 h</option>
       </select>
-      <div class="note">Only used in Week &amp; 7-day views. Each tick is a small regional refresh.</div>
+      <div class="note">Only used in Week, 7-day &amp; 5-day views. Each tick is a small regional refresh.</div>
       <div class="note" id="tlWarning" style="display:none;color:#f59e0b;margin-top:4px">⚠️ Intervals under 30 minutes cause frequent regional updates that can slowly darken the screen over time. Use a full-screen clean refresh periodically to clear this.</div>
     </div>
     <div class="field">

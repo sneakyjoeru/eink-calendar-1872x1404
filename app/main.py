@@ -1303,9 +1303,9 @@ input[type="range"] {{ width: 100%; }}
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" onclick="switchTab(0)">📅 Calendar</button>
-  <button class="tab-btn" onclick="switchTab(1)">🎨 Appearance</button>
-  <button class="tab-btn" onclick="switchTab(2)">🔧 Advanced</button>
+  <button type="button" class="tab-btn active" onclick="switchTab(0)">📅 Calendar</button>
+  <button type="button" class="tab-btn" onclick="switchTab(1)">🎨 Appearance</button>
+  <button type="button" class="tab-btn" onclick="switchTab(2)">🔧 Advanced</button>
 </div>
 
 <!-- Tab 0: Calendar -->

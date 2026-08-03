@@ -1147,7 +1147,7 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                 _layer = Image.new("RGBA", (_cw, _ch), (0, 0, 0, 0))
                 _ldraw = ImageDraw.Draw(_layer)
                 _lx = int(txt_x) - _clip_l
-                _ly = int(y) - _clip_t + 2  # 2px downward shift
+                _ly = int(y) - _clip_t
                 _ldraw.text((_lx, _ly), text, fill=(255, 255, 255, 255),
                             font=f, stroke_width=text_outline_width,
                             stroke_fill=(255, 255, 255, 255))

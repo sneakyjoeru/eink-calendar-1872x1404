@@ -1187,6 +1187,24 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
             else:
                 draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=6,
                                        fill=GRAY_VLIGHT, outline=BLACK, width=2)
+                # White text outline on the gray fill, same as timed events.
+                if text_outline_width > 0:
+                    _fd_clip_l = bx0 + 2
+                    _fd_clip_t = fy0 + 2
+                    _fd_clip_r = bx1 - 2
+                    _fd_clip_b = fy1 - 2
+                    _fd_cw = _fd_clip_r - _fd_clip_l
+                    _fd_ch = _fd_clip_b - _fd_clip_t
+                    if _fd_cw > 0 and _fd_ch > 0:
+                        _fd_layer = Image.new("RGBA", (_fd_cw, _fd_ch), (0, 0, 0, 0))
+                        _fd_ldraw = ImageDraw.Draw(_fd_layer)
+                        _fd_lx = (xl + 6) - _fd_clip_l
+                        _fd_ly = (ey - 3) - _fd_clip_t
+                        _fd_ldraw.text((_fd_lx, _fd_ly), display,
+                                       fill=(255, 255, 255, 255),
+                                       font=fd_font, stroke_width=text_outline_width,
+                                       stroke_fill=(255, 255, 255, 255))
+                        img.paste(_fd_layer, (_fd_clip_l, _fd_clip_t), _fd_layer)
                 draw.text((xl + 6, ey - 3), display, fill=BLACK, font=fd_font)
 
 

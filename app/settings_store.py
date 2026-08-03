@@ -36,6 +36,7 @@ _DEFAULTS = {
     "crossed_event_dim": False,   # dim events when time line crosses them
     "show_descriptions": True,    # show event descriptions under the title/time on cards
     "text_size_modifier": 0,      # global font size adjustment (+/- pixels)
+    "text_outline_width": 5,      # white text outline width in px for colored event boxes (0 = off, max 10)
 }
 
 _lock = threading.RLock()

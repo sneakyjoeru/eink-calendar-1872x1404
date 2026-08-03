@@ -1268,8 +1268,8 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
         label_font = _font(26, bold=True)
         lw = _text_w(draw, time_str, label_font)
         lh = _text_h(draw, time_str, label_font)
-        pad_x = lw // 4 + 3   # horizontal white gap (scales with text width)
-        pad_y = lh // 4 + 3   # vertical white gap (scales with text height)
+        pad_x = 4   # fixed 4px white gap between text and pill border
+        pad_y = 4
         box_r = x_end
         box_l = x_end - lw - pad_x * 2
         box_t = y - lh // 2 - pad_y
@@ -1287,8 +1287,8 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
         label_font = _font(26, bold=True)
         lw = _text_w(draw, time_str, label_font)
         lh = _text_h(draw, time_str, label_font)
-        pad_x = lw // 4 + 3
-        pad_y = lh // 4 + 3
+        pad_x = 4
+        pad_y = 4
         box_r = x_end
         box_l = x_end - lw - pad_x * 2
         box_t = y - lh // 2 - pad_y
@@ -1309,8 +1309,8 @@ def _draw_time_line(draw, now, view_mode, day_start, day_end, events, time_forma
     label_font = _font(26, bold=True)
     lw = _text_w(draw, time_str, label_font)
     lh = _text_h(draw, time_str, label_font)
-    pad_x = lw // 4 + 3   # horizontal white gap (scales with text width)
-    pad_y = lh // 4 + 3   # vertical white gap (scales with text height)
+    pad_x = 4   # fixed 4px white gap between text and pill border
+    pad_y = 4
     box_r = x_end
     box_l = x_end - lw - pad_x * 2
     box_t = y - lh // 2 - pad_y

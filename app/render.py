@@ -215,7 +215,18 @@ def render_calendar(view_mode: str, events: list[dict],
         else:
             sub_left = W - MARGIN
         ip_center = (title_right + sub_left) // 2
-        draw.text((ip_center - uw // 2, 32), settings_url, fill=GRAY_MID, font=url_font)
+        # Vertically align with the title's top edge (title_y), matching the
+        # subtitle alignment in _draw_header. Compute the same title_y the view
+        # renderer used so full-day-bar lifting is honoured.
+        if view_mode in ("week", "7days", "5days"):
+            if view_mode == "week":
+                _start_date = now.date() - datetime.timedelta(days=now.date().weekday())
+            else:
+                _start_date = now.date()
+            _title_y = _fullday_title_y(draw, title_str, font_title, events, _start_date, max_full_day)
+        else:
+            _title_y = 20
+        draw.text((ip_center - uw // 2, _title_y), settings_url, fill=GRAY_MID, font=url_font)
 
     # b/w mode: threshold the entire image to pure 1-bit black/white.
     # (In grayscale mode we intentionally keep the real gray levels — see below.)
@@ -278,11 +289,11 @@ def _draw_header(draw: ImageDraw.ImageDraw, title: str, subtitle: str = "",
     font_title = _font(64, bold=True)
     draw.text((MARGIN, title_y), title, fill=BLACK, font=font_title)
 
-    # Subtitle (e.g. week number or date range) — kept aligned with the title
+    # Subtitle (e.g. week number or date range) — top-aligned with the title
     if subtitle:
         font_sub = _font(36)
         sw = _text_w(draw, subtitle, font_sub)
-        draw.text((W - MARGIN - sw, title_y + 10), subtitle, fill=GRAY_DARK, font=font_sub)
+        draw.text((W - MARGIN - sw, title_y), subtitle, fill=GRAY_DARK, font=font_sub)
 
     # Header separator line
     y = HEADER_H - 10
@@ -1005,7 +1016,7 @@ def _render_day_grid(draw, events, now, ds_h, ds_m, de_h, de_m, max_full_day, ti
             fonts = {"title": line_font, "time": line_font, "loc": event_font_sm, "desc": event_font_sm}
             heights = {"title": line_h, "time": line_h, "loc": int(20 * font_scale) + line_gap_bonus, "desc": int(20 * font_scale) + line_gap_bonus}
 
-            y = ey_top + 4
+            y = ey_top + 2
             for text, kind in render_lines:
                 if kind == "spacer" or not text:
                     y += 4

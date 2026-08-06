@@ -185,7 +185,7 @@ def render_calendar(view_mode: str, events: list[dict],
                     bw_mode: bool = False,
                     dim_style: str = "normal",
                     show_descriptions: bool = True,
-                    text_outline_width: int = 5,
+                    text_outline_width: int = 0,
                     brightness: float = 1.4,
                     now: Optional[datetime.datetime] = None) -> Image.Image:
     """Render the full calendar view to a PIL Image.
@@ -276,12 +276,23 @@ def render_calendar(view_mode: str, events: list[dict],
         gray = img.convert("L")
         bw = gray.point(lambda x: 0 if x < 128 else 255, "L")
         img = bw.convert("RGB")
-    # else: grayscale mode — keep the palette's real gray levels (event fills,
-    # dim shading, grid/hour lines). Previously this branch hard-thresholded
-    # everything at 201 to dodge GL16 gray-edge ghosting, which flattened all
-    # event shading. That artifact is now handled at the driver level by the
-    # 2px-grid snap (snap_to_2px_grid), so the image is passed through with its
-    # 16-level grays intact and rendered natively by GC16 (full) / GL16 (region).
+    else:
+        # Grayscale mode: threshold to eliminate anti-aliasing edge pixels
+        # around text (which cause GL16 ghosting / "white outline" halos on
+        # the e-ink panel) while preserving intentional gray UI elements
+        # (event fills, grid lines, dim shading). Anti-aliased text edges
+        # produce gray values that are NOT in our discrete palette. We keep
+        # exact palette values unchanged and threshold everything else to
+        # pure B/W at 128. This removes the gray halo around text without
+        # flattening event fills or grid lines.
+        palette = {0, 60, 120, 153, 170, 200, 239, 255}
+        def snap_non_palette(x):
+            if x in palette:
+                return x
+            return 0 if x < 128 else 255
+        gray = img.convert("L")
+        snapped = gray.point(snap_non_palette)
+        img = snapped.convert("RGB")
 
     return img
 
@@ -815,7 +826,7 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
             label = f"{h12} {ampm}"
         else:
             label = f"{h:02d}"
-        draw.text((grid_x - max_label_w - label_rpad, y - 14), label, fill=GRAY_MID, font=hour_font)
+        draw.text((grid_x - max_label_w - label_rpad, y - 14), label, fill=BLACK, font=hour_font)
 
     # Column separators — thicker where month changes, extending up to header line
     sep_top = HEADER_H - 10  # header separator line

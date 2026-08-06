@@ -38,13 +38,17 @@ _SIZE_MODIFIER = 0  # global font size adjustment, set before each render
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     """Get a cached font instance, adjusted by global size modifier.
 
-    Always uses the regular (non-bold) font — bold fonts produce 3-5px wide
-    strokes that the IT8951 GC16 waveform doubles/splits. The regular font
-    produces 2px strokes that render cleanly. Size is increased by 1 when
-    bold was requested, to partially compensate for the thinner weight.
+    Uses the Bold font (DejaVuSans-Bold) when bold=True, producing wider
+    strokes (4 to 5 px) that are clearly readable on the IT8951 e-ink display.
+    The Regular font produces only 2 to 3 px strokes - too thin for comfortable
+    reading. The previous workaround of always using Regular + +1 size
+    was needed when GC16 waveform ghosting was a concern, but the render
+    pipeline now hard-thresholds the entire image to pure B/W (eliminating
+    all gray AA edge pixels), so bold strokes render cleanly without
+    ghosting or doubling artifacts.
     """
-    size = max(4, size + _SIZE_MODIFIER + (1 if bold else 0))
-    path = _FONT_PATHS[0]  # always regular — bold strokes get doubled by GC16
+    size = max(4, size + _SIZE_MODIFIER)
+    path = _FONT_PATHS[1] if bold else _FONT_PATHS[0]
     key = (path, size)
     if key not in _FONT_CACHE:
         try:

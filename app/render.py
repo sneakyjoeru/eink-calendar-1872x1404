@@ -299,7 +299,17 @@ def _fullday_title_y(draw, title, title_font, events, start_date, max_full_day,
         d = ev["start"]
         if isinstance(d, datetime.datetime):
             d = d.date()
-        counts[d] = counts.get(d, 0) + 1
+        end_d = ev.get("end")
+        if isinstance(end_d, datetime.datetime):
+            end_d = end_d.date()
+        if end_d is None:
+            end_d = d + datetime.timedelta(days=1)
+        # Register on every date in [start, end) so multi-day events that span
+        # into the first 3 columns are counted correctly.
+        cur = d
+        while cur < end_d:
+            counts[cur] = counts.get(cur, 0) + 1
+            cur += datetime.timedelta(days=1)
     BAR_TOP = 80
     raised = False
     for i in range(3):
@@ -371,14 +381,25 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
         draw.text((cx - tw // 2, grid_y), dow, fill=GRAY_DARK, font=dow_font)
     grid_y += 36
 
-    # Events indexed by date
+    # Events indexed by date. Multi-day all-day events are registered on EVERY
+    # date they span (start .. end-1, Google exclusive-end convention) so they
+    # appear in every day cell they cover. If an event spans multiple weeks it
+    # naturally creates a box in each week row it touches.
     events_by_date: dict[datetime.date, list[dict]] = {}
     for ev in events:
         if ev["all_day"]:
             d = ev["start"]
             if isinstance(d, datetime.datetime):
                 d = d.date()
-            events_by_date.setdefault(d, []).append(ev)
+            end_d = ev.get("end")
+            if isinstance(end_d, datetime.datetime):
+                end_d = end_d.date()
+            if end_d is None:
+                end_d = d + datetime.timedelta(days=1)
+            cur = d
+            while cur < end_d:
+                events_by_date.setdefault(cur, []).append(ev)
+                cur += datetime.timedelta(days=1)
         else:
             d = ev["start"]
             if isinstance(d, datetime.datetime):
@@ -558,13 +579,26 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
         draw.text((cx - tw // 2, grid_y), dow, fill=GRAY_DARK, font=dow_font)
     grid_y += 36
 
-    # Events indexed by date
+    # Events indexed by date. Multi-day all-day events are registered on EVERY
+    # date they span (start .. end-1, Google exclusive-end convention) so they
+    # appear in every day cell they cover.
     events_by_date: dict[datetime.date, list[dict]] = {}
     for ev in events:
         d = ev["start"]
         if isinstance(d, datetime.datetime):
             d = d.date()
-        events_by_date.setdefault(d, []).append(ev)
+        if ev.get("all_day"):
+            end_d = ev.get("end")
+            if isinstance(end_d, datetime.datetime):
+                end_d = end_d.date()
+            if end_d is None:
+                end_d = d + datetime.timedelta(days=1)
+            cur = d
+            while cur < end_d:
+                events_by_date.setdefault(cur, []).append(ev)
+                cur += datetime.timedelta(days=1)
+        else:
+            events_by_date.setdefault(d, []).append(ev)
 
     # Grid cells
     cell_font = _font(32, bold=True)
@@ -779,14 +813,25 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
         span_min = 16 * 60  # fallback 16h
     minute_h = grid_h / span_min  # pixels per minute
 
-    # Full-day events — build data index early
+    # Full-day events — build data index early. Multi-day all-day events are
+    # registered on EVERY date they span (start .. end-1, Google convention) so
+    # they can be rendered as a single bar stretching across all their days.
     fd_events_by_date: dict[datetime.date, list[dict]] = {}
     for ev in events:
         if ev["all_day"]:
             d = ev["start"]
             if isinstance(d, datetime.datetime):
                 d = d.date()
-            fd_events_by_date.setdefault(d, []).append(ev)
+            end_d = ev.get("end")
+            if isinstance(end_d, datetime.datetime):
+                end_d = end_d.date()
+            # Expand to all dates in [start, end). end is exclusive (Google Cal).
+            cur = d
+            while end_d is not None and cur < end_d:
+                fd_events_by_date.setdefault(cur, []).append(ev)
+                cur += datetime.timedelta(days=1)
+            if end_d is None:
+                fd_events_by_date.setdefault(d, []).append(ev)
 
     # Grid border
     grid_border_color = BLACK if bw_mode else GRAY_LIGHT
@@ -1155,70 +1200,128 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
         for txt_x, y, text, f, text_fill in text_cmds:
             draw.text((txt_x, y), text, fill=text_fill, font=f)
 
-    # Full-day events — drawn LAST so they cover everything (day headers, timed events)
+    # Full-day events — drawn LAST so they cover everything (day headers, timed events).
+    # Multi-day all-day events are expanded to span all their day columns as a
+    # single horizontal bar on the same row.
     fd_font = _font(int(24 * font_scale))
     fd_h = int(30 * font_scale)  # bar height (fits 2 from header line to grid_y)
     fd_step = fd_h  # no gap between stacked events
     fd_top = HEADER_H - 8  # top event's ey so its top edge touches the header separator line
-    for i in range(days):
-        d = start_date + datetime.timedelta(days=i)
-        x = grid_x + i * col_w
-        fd_list = fd_events_by_date.get(d, [])
-        fd_count = min(len(fd_list), max_full_day)
-        for j, ev in enumerate(fd_list[:max_full_day]):
-            label = ev.get("summary", "")
-            if not label or label == "(No title)":
-                continue
 
-            # Vertical: single event goes above header line, 2 below, 3+ overshoot
-            if fd_count == 1:
-                ey = fd_top - fd_step  # single event, bottom touches header line
-            elif j < 2:
-                ey = fd_top + j * fd_step
-            else:
-                ey = fd_top - (j - 1) * fd_step
+    # Collect unique events + their date span within the visible range.
+    visible_dates = [start_date + datetime.timedelta(days=i) for i in range(days)]
+    date_to_col = {d: i for i, d in enumerate(visible_dates)}
 
-            # Full cell width (stack vertically, not side-by-side)
-            xl, xr = x + 4, x + col_w - 4
-            avail_fd_w = xr - xl - 8
-            wrapped = _wrap_text_lines(draw, label, fd_font, avail_fd_w)
-            display = wrapped[0] if wrapped else label[:15]
-            # Even-align L/R edges to the 2px column grid (see timed-event boxes)
-            # so the 2px vertical borders stay a uniform 2px on every day after
-            # the driver's 2px-grid snap, instead of widening to 4px on some.
-            bx0 = int(xl) & ~1
-            bx1 = int(xr) | 1
-            fy0 = int(ey - 2)
-            fy1 = int(ey + fd_h - 2)
-            if bw_mode:
-                # 3px rounded, white border separates stacked full-day bars,
-                # bold white text stays legible on black. Clear to white first so
-                # the rounded corners read against white, not the bar beneath.
-                draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=8,
-                                       fill=BLACK, outline=WHITE, width=2)
-                draw.text((xl + 6, ey - 3), display, fill=WHITE, font=_font_heavy(int(24 * font_scale)))
-            else:
-                draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=6,
-                                       fill=GRAY_VLIGHT, outline=BLACK, width=2)
-                # White text outline on the gray fill, same as timed events.
-                if text_outline_width > 0:
-                    _fd_clip_l = bx0 + 2
-                    _fd_clip_t = fy0 + 2
-                    _fd_clip_r = bx1 - 2
-                    _fd_clip_b = fy1 - 2
-                    _fd_cw = _fd_clip_r - _fd_clip_l
-                    _fd_ch = _fd_clip_b - _fd_clip_t
-                    if _fd_cw > 0 and _fd_ch > 0:
-                        _fd_layer = Image.new("RGBA", (_fd_cw, _fd_ch), (0, 0, 0, 0))
-                        _fd_ldraw = ImageDraw.Draw(_fd_layer)
-                        _fd_lx = (xl + 6) - _fd_clip_l
-                        _fd_ly = (ey - 3) - _fd_clip_t
-                        _fd_ldraw.text((_fd_lx, _fd_ly), display,
-                                       fill=(255, 255, 255, 255),
-                                       font=fd_font, stroke_width=text_outline_width,
-                                       stroke_fill=(255, 255, 255, 255))
-                        img.paste(_fd_layer, (_fd_clip_l, _fd_clip_t), _fd_layer)
-                draw.text((xl + 6, ey - 3), display, fill=BLACK, font=fd_font)
+    # Build unique event list with start/end column indices within the visible range.
+    seen_ids = set()
+    fd_spans = []  # (ev, col_start, col_end_inclusive)
+    for ev in events:
+        if not ev["all_day"]:
+            continue
+        ev_id = ev.get("id", id(ev))
+        if ev_id in seen_ids:
+            continue
+        seen_ids.add(ev_id)
+        d = ev["start"]
+        if isinstance(d, datetime.datetime):
+            d = d.date()
+        end_d = ev.get("end")
+        if isinstance(end_d, datetime.datetime):
+            end_d = end_d.date()
+        if end_d is None:
+            end_d = d + datetime.timedelta(days=1)
+        # Last day the event covers (end is exclusive)
+        last_d = end_d - datetime.timedelta(days=1)
+        # Clamp to visible range
+        vis_start = max(d, visible_dates[0])
+        vis_end = min(last_d, visible_dates[-1])
+        if vis_start > visible_dates[-1] or vis_end < visible_dates[0]:
+            continue  # entirely outside visible range
+        col_start = date_to_col[vis_start]
+        col_end = date_to_col[vis_end]
+        fd_spans.append((ev, col_start, col_end))
+
+    # Sort by start column, then by span length (longer first so they get lower row slots)
+    fd_spans.sort(key=lambda s: (s[1], -(s[2] - s[1])))
+
+    # Assign row slots greedily — each event needs the same row across all its columns.
+    # row_occupied[row] = set of columns already taken
+    row_occupied: list[set[int]] = []
+    fd_rows: list[int] = []  # row index per fd_span entry
+    for ev, col_start, col_end in fd_spans:
+        cols_needed = set(range(col_start, col_end + 1))
+        assigned = False
+        for row_idx, occupied in enumerate(row_occupied):
+            if not cols_needed & occupied:
+                occupied.update(cols_needed)
+                fd_rows.append(row_idx)
+                assigned = True
+                break
+        if not assigned:
+            row_occupied.append(cols_needed.copy())
+            fd_rows.append(len(row_occupied) - 1)
+
+    # Draw each event as a single bar spanning its day columns.
+    max_row = max(fd_rows) if fd_rows else -1
+    fd_count_total = max_row + 1  # total rows used (for classic-band layout logic)
+    for (ev, col_start, col_end), row_idx in zip(fd_spans, fd_rows):
+        if row_idx >= max_full_day:
+            continue  # skip rows beyond the visible limit
+        label = ev.get("summary", "")
+        if not label or label == "(No title)":
+            continue
+
+        # Vertical: single event goes above header line, 2 below, 3+ overshoot
+        if fd_count_total == 1:
+            ey = fd_top - fd_step  # single event, bottom touches header line
+        elif row_idx < 2:
+            ey = fd_top + row_idx * fd_step
+        else:
+            ey = fd_top - (row_idx - 1) * fd_step
+
+        # Span from first day's left edge to last day's right edge
+        x_start = grid_x + col_start * col_w
+        x_end_col = grid_x + (col_end + 1) * col_w
+        xl, xr = x_start + 4, x_end_col - 4
+        avail_fd_w = xr - xl - 8
+        wrapped = _wrap_text_lines(draw, label, fd_font, avail_fd_w)
+        display = wrapped[0] if wrapped else label[:15]
+        # Even-align L/R edges to the 2px column grid (see timed-event boxes)
+        # so the 2px vertical borders stay a uniform 2px on every day after
+        # the driver's 2px-grid snap, instead of widening to 4px on some.
+        bx0 = int(xl) & ~1
+        bx1 = int(xr) | 1
+        fy0 = int(ey - 2)
+        fy1 = int(ey + fd_h - 2)
+        if bw_mode:
+            # 3px rounded, white border separates stacked full-day bars,
+            # bold white text stays legible on black. Clear to white first so
+            # the rounded corners read against white, not the bar beneath.
+            draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=8,
+                                   fill=BLACK, outline=WHITE, width=2)
+            draw.text((xl + 6, ey - 3), display, fill=WHITE, font=_font_heavy(int(24 * font_scale)))
+        else:
+            draw.rounded_rectangle([bx0, fy0, bx1, fy1], radius=6,
+                                   fill=GRAY_VLIGHT, outline=BLACK, width=2)
+            # White text outline on the gray fill, same as timed events.
+            if text_outline_width > 0:
+                _fd_clip_l = bx0 + 2
+                _fd_clip_t = fy0 + 2
+                _fd_clip_r = bx1 - 2
+                _fd_clip_b = fy1 - 2
+                _fd_cw = _fd_clip_r - _fd_clip_l
+                _fd_ch = _fd_clip_b - _fd_clip_t
+                if _fd_cw > 0 and _fd_ch > 0:
+                    _fd_layer = Image.new("RGBA", (_fd_cw, _fd_ch), (0, 0, 0, 0))
+                    _fd_ldraw = ImageDraw.Draw(_fd_layer)
+                    _fd_lx = (xl + 6) - _fd_clip_l
+                    _fd_ly = (ey - 3) - _fd_clip_t
+                    _fd_ldraw.text((_fd_lx, _fd_ly), display,
+                                   fill=(255, 255, 255, 255),
+                                   font=fd_font, stroke_width=text_outline_width,
+                                   stroke_fill=(255, 255, 255, 255))
+                    img.paste(_fd_layer, (_fd_clip_l, _fd_clip_t), _fd_layer)
+            draw.text((xl + 6, ey - 3), display, fill=BLACK, font=fd_font)
 
 
 def _wrap_text_lines(draw, text, font, max_w):

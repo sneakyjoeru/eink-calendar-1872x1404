@@ -1313,6 +1313,14 @@ input[type="range"] {{ width: 100%; }}
   <div class="card">
     <h2>🔐 Google Account</h2>
     {auth_section}
+    <h3 style="margin-top:16px">Live Preview</h3>
+    <div style="text-align:center;margin-top:8px">
+      <img id="inlinePreview" src="/image" alt="E-Ink Display"
+           style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--border);cursor:pointer;image-rendering:auto"
+           onclick="openPreviewPopup()"
+           onerror="this.style.display='none'">
+      <p class="note" style="margin-top:4px">Click the image to view full-size. Updates automatically.</p>
+    </div>
   </div>
 </div>
 
@@ -1336,17 +1344,18 @@ input[type="range"] {{ width: 100%; }}
   </div>
 
   <div class="card">
-    <h2>📅 View</h2>
+    <h2>⚡ Presets</h2>
     <div class="field">
-      <label>View Mode</label>
-      <select name="view_mode">
-        <option value="month" {sel_month}>Month (current month)</option>
-        <option value="35days" {sel_35days}>Month (5 weeks, Mon-start)</option>
-        <option value="week" {sel_week}>Week (Mon–Sun)</option>
-        <option value="7days" {sel_7days}>7 Days (from today)</option>
-        <option value="5days" {sel_5days}>5 Days (from today)</option>
+      <label>Preset (defaults to your current setup)</label>
+      <select id="presetSelect2" onchange="applyPreset2()">
+        {preset_options}
       </select>
+      <div class="note" id="presetDesc2" style="margin-top:6px"></div>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>📅 Events &amp; View</h2>
     <div class="field">
       <label>Full-day events shown per day</label>
       <select name="max_full_day_events">
@@ -1361,6 +1370,12 @@ input[type="range"] {{ width: 100%; }}
       <span>Show event location &amp; description on cards</span>
     </label>
     <p class="note">Location (prefixed “@”) and description under the title/time, when the event has them and there's room.</p>
+    <h3>Syncing</h3>
+    <div class="field">
+      <label>Check Google for new events every (seconds)</label>
+      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
+      <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
+    </div>
   </div>
 
   <div class="card">
@@ -1400,36 +1415,6 @@ input[type="range"] {{ width: 100%; }}
       <label>Timezone</label>
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from your IP">
       <div class="note">City name (e.g. Europe/Moscow) or UTC offset (e.g. +3).</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>⏱ Current-time line</h2>
-    <label class="check-row">
-      <input type="checkbox" name="show_time_line" value="1" {show_time_line}>
-      <span>Show current-time line</span>
-    </label>
-    <div class="field">
-      <label>Move the time line every</label>
-      <select name="time_line_interval_min" id="tlInterval" onchange="updateTlWarning()">
-        <option value="1" {sel_tl_1}>1 minute · every 1/60 h</option>
-        <option value="2" {sel_tl_2}>2 minutes · 1/30 h</option>
-        <option value="5" {sel_tl_5}>5 minutes · 1/12 h</option>
-        <option value="10" {sel_tl_10}>10 minutes · 1/6 h</option>
-        <option value="15" {sel_tl_15}>15 minutes · 1/4 h</option>
-        <option value="20" {sel_tl_20}>20 minutes · 1/3 h</option>
-        <option value="30" {sel_tl_30}>30 minutes · 1/2 h</option>
-      </select>
-      <div class="note">Only used in Week, 7-day &amp; 5-day views. Each tick is a small regional refresh.</div>
-      <div class="note" id="tlWarning" style="display:none;color:#f59e0b;margin-top:4px">⚠️ Intervals under 30 minutes cause frequent regional updates that can slowly darken the screen over time. Use a full-screen clean refresh periodically to clear this.</div>
-    </div>
-    <div class="field">
-      <label>Time-line style</label>
-      <select name="time_line_style">
-        <option value="solid" {sel_tl_style_solid}>Solid thick line</option>
-        <option value="dotted" {sel_tl_style_dotted}>Dotted (default)</option>
-        <option value="wavy" {sel_tl_style_wavy}>Wavy</option>
-      </select>
     </div>
   </div>
 
@@ -1481,32 +1466,48 @@ input[type="range"] {{ width: 100%; }}
   </div>
 
   <div class="card">
-    <h2>� Preview</h2>
-    <a href="/preview" class="btn btn-small" style="display:block;text-align:center">View the screen live</a>
-    <p class="note" style="margin-top:8px">See exactly what's on the e-ink from your browser.</p>
-  </div>
-
-</div>
-</div>
-
-<!-- Tab 2: Advanced -->
-<div class="tab-panel" id="tab2">
-<div class="settings-grid">
-
-  <div class="card">
-    <h2>⚡ Presets</h2>
+    <h2>📅 View Mode</h2>
     <div class="field">
-      <label>Preset (defaults to your current setup)</label>
-      <select id="presetSelect2" onchange="applyPreset2()">
-        {preset_options}
+      <label>View Mode</label>
+      <select name="view_mode">
+        <option value="month" {sel_month}>Month (current month)</option>
+        <option value="35days" {sel_35days}>Month (5 weeks, Mon-start)</option>
+        <option value="week" {sel_week}>Week (Mon–Sun)</option>
+        <option value="7days" {sel_7days}>7 Days (from today)</option>
+        <option value="5days" {sel_5days}>5 Days (from today)</option>
       </select>
-      <div class="note" id="presetDesc2" style="margin-top:6px"></div>
     </div>
   </div>
 
   <div class="card">
-    <h2>�🔧 Screen updates</h2>
-    <p class="note" style="margin-top:-8px;margin-bottom:12px">Advanced — most people can just use a Preset.</p>
+    <h2>⏱ Current-time line</h2>
+    <label class="check-row">
+      <input type="checkbox" name="show_time_line" value="1" {show_time_line}>
+      <span>Show current-time line</span>
+    </label>
+    <div class="field">
+      <label>Move the time line every</label>
+      <select name="time_line_interval_min" id="tlInterval" onchange="updateTlWarning()">
+        <option value="1" {sel_tl_1}>1 minute · every 1/60 h</option>
+        <option value="2" {sel_tl_2}>2 minutes · 1/30 h</option>
+        <option value="5" {sel_tl_5}>5 minutes · 1/12 h</option>
+        <option value="10" {sel_tl_10}>10 minutes · 1/6 h</option>
+        <option value="15" {sel_tl_15}>15 minutes · 1/4 h</option>
+        <option value="20" {sel_tl_20}>20 minutes · 1/3 h</option>
+        <option value="30" {sel_tl_30}>30 minutes · 1/2 h</option>
+      </select>
+      <div class="note">Only used in Week, 7-day &amp; 5-day views. Each tick is a small regional refresh.</div>
+      <div class="note" id="tlWarning" style="display:none;color:#f59e0b;margin-top:4px">⚠️ Intervals under 30 minutes cause frequent regional updates that can slowly darken the screen over time. Use a full-screen clean refresh periodically to clear this.</div>
+    </div>
+    <div class="field">
+      <label>Time-line style</label>
+      <select name="time_line_style">
+        <option value="solid" {sel_tl_style_solid}>Solid thick line</option>
+        <option value="dotted" {sel_tl_style_dotted}>Dotted (default)</option>
+        <option value="wavy" {sel_tl_style_wavy}>Wavy</option>
+      </select>
+    </div>
+    <h3>Regional refresh</h3>
     <div class="field">
       <label>Update style for small changes (time line, etc.)</label>
       <select name="update_mode">
@@ -1537,13 +1538,14 @@ input[type="range"] {{ width: 100%; }}
       </select>
       <div class="note">Flash+draw cycles when regional hard mode is active.</div>
     </div>
-    <h3>Syncing</h3>
-    <div class="field">
-      <label>Check Google for new events every (seconds)</label>
-      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
-      <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
-    </div>
   </div>
+
+</div>
+</div>
+
+<!-- Tab 2: Advanced -->
+<div class="tab-panel" id="tab2">
+<div class="settings-grid">
 
   <div class="card">
     <h2>♻️ Full-screen refresh</h2>
@@ -1633,6 +1635,15 @@ function switchTab(n) {{
     p.classList.toggle('active', i === n);
   }});
 }}
+function openPreviewPopup() {{
+  var w = window.open('/preview', 'einkPreview', 'width=1000,height=800');
+  if (w) w.focus();
+}}
+function refreshInlinePreview() {{
+  var img = document.getElementById('inlinePreview');
+  if (img) img.src = '/image?t=' + Date.now();
+}}
+setInterval(refreshInlinePreview, 15000);
 function applyPreset() {{
   var sel = document.getElementById('presetSelect');
   var desc = document.getElementById('presetDesc');

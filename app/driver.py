@@ -30,12 +30,48 @@ _last_full_refresh = 0.0  # timestamp of last forced full refresh (set on first 
 PX_PER_MM = 11.85
 
 
+def snap_to_2px_grid(img):
+    """Collapse each horizontal column pair (2k, 2k+1) into one value.
+
+    The IT8951 panel addresses columns in 2-pixel pairs: a *split* pair
+    (one column black, the other white) can't be driven cleanly, so the panel
+    renders the mismatched column as a faint/dark echo — the "extra thin line"
+    seen on the right of odd-width lines and on text stroke edges. Making both
+    columns of every pair equal removes all split pairs, so lines and text come
+    out crisp. Darker column wins (min), so thin black features survive — a lone
+    black column is completed to a full, even-aligned 2px. No new gray levels
+    are introduced. Pure Pillow (no numpy); all work is C-speed slicing +
+    ImageChops.darker, so the per-frame cost is negligible.
+    """
+    from PIL import Image, ImageChops
+    g = img.convert("L")
+    w, h = g.size
+    orig_w = w
+    if w % 2:  # panel width is 1872 (even); pad defensively for arbitrary input
+        pad = Image.new("L", (w + 1, h), 255)
+        pad.paste(g, (0, 0))
+        g, w = pad, w + 1
+    data = g.tobytes()                 # row-major; w even => even index == even column
+    half = w // 2
+    left = Image.frombytes("L", (half, h), bytes(data[0::2]))   # cols 0,2,4,...
+    right = Image.frombytes("L", (half, h), bytes(data[1::2]))  # cols 1,3,5,...
+    pair = ImageChops.darker(left, right).tobytes()             # min of each pair
+    out = bytearray(w * h)
+    out[0::2] = pair                   # column 2k   = pair k
+    out[1::2] = pair                   # column 2k+1 = pair k  (pair never split)
+    snapped = Image.frombytes("L", (w, h), bytes(out))
+    if w != orig_w:
+        snapped = snapped.crop((0, 0, orig_w, h))
+    return snapped
+
+
 def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = False,
                       smooth: bool = False, update_mode: str = "soft",
                       refresh_border_mm: float = 5,
                       full_refresh_repeats: int = 1,
                       regional_hard_repeats: int = 1,
-                      bw_mode: bool = False) -> bool:
+                      bw_mode: bool = False,
+                      hard_clear: bool = False) -> bool:
     """Display a PIL image on the e-ink screen via the C driver.
 
     update_mode: regional update flavour for non-full refreshes —
@@ -73,6 +109,13 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         return False
 
     tmp_path = config.TMP_DIR / "render.png"
+    # Snap to the panel's 2-pixel column grid so black/white transitions never
+    # split a pair (which the IT8951 renders as a faint echo on the odd column).
+    # Grayscale/GC16 only: in b/w mode we render via DU (1-bit, fully driven —
+    # there is no split-pair echo to correct), and the snap's min-rule squares
+    # rounded card corners and erodes white-on-black text, so skip it.
+    if not bw_mode:
+        pil_image = snap_to_2px_grid(pil_image)
     pil_image.save(str(tmp_path), "PNG")
 
     # Convert mm to px for border-smooth (partial-refresh area expansion)
@@ -84,12 +127,16 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
     # refresh) to remove ghosting. Both save the diff cache for next update.
     if force_full:
         repeats = max(1, full_refresh_repeats)
-        if bw_mode:
+        if bw_mode and not hard_clear:
+            # Automatic b/w full refresh (day change / interval / deploy): DU,
+            # no flash, thin strokes stay sharp.
             cmd = [binary, "--image", str(tmp_path),
                    "--brightness", str(brightness),
                    "--du-fullscreen"]
             logger.info("Full screen DU clean refresh (b/w, %dx)", repeats)
         else:
+            # Grayscale, OR an explicit Save & Render in b/w mode (hard_clear):
+            # GC16 clean refresh flashes the whole panel to fully clear ghosting.
             cmd = [binary, "--image", str(tmp_path),
                    "--brightness", str(brightness),
                    "--fullscreen", "--border-smooth", "0"]
@@ -121,23 +168,30 @@ def render_to_screen(pil_image, brightness: float = 1.4, force_full: bool = Fals
         return True
 
     # ---- Regional differential update (only changed region + expansion border) ----
-    # Since the image is always thresholded to pure B/W (both grayscale and b/w
-    # modes), use DU mode for ALL regional updates. DU fully drives e-ink
-    # particles without creating white gaps in solid black strokes (unlike
-    # GL16/GC16 which can split vertical strokes). DU has no ghosting.
-    # "hard" mode still does a flash+GL16 for users who want the flash effect.
-    if update_mode == "hard":
-        regional_border = min(border_px, 24)
-        mode_flag = "--hard"
-    else:
-        # soft/du: always use DU (1-bit, no flash, no gaps, no ghosting)
+    # Keep the regional waveform CONSISTENT with the mode's full refresh so the
+    # same content never changes appearance between refresh types:
+    #   b/w mode       -> DU for EVERY regional update (1-bit, no flash, no
+    #                     ghosting, no stroke-splitting) — matches --du-fullscreen.
+    #   grayscale mode -> GL16 family, which renders the real gray levels —
+    #                     matches the GC16 full refresh: soft = GL16 (no flash),
+    #                     hard = flash + GL16.
+    # Grayscale content now carries real grays, so --du would threshold a soft
+    # update to 1-bit and it would not match a full/hard refresh.
+    if bw_mode:
         regional_border = border_px
         mode_flag = "--du"
+        regional_repeats = 1
+    elif update_mode == "hard":
+        regional_border = min(border_px, 24)
+        mode_flag = "--hard"
+        regional_repeats = max(1, regional_hard_repeats)
+    else:  # soft (a "du" setting in grayscale falls back to soft — du would drop grays)
+        regional_border = border_px
+        mode_flag = "--soft"
+        regional_repeats = 1
     cmd = [binary, "--image", str(tmp_path),
            "--brightness", str(brightness),
            mode_flag, "--border-smooth", str(regional_border)]
-    # For hard regional mode, repeat the flash+draw cycle multiple times.
-    regional_repeats = max(1, regional_hard_repeats) if update_mode == "hard" else 1
     logger.info("Regional %s update (expansion=%dpx / %.1fmm, %dx)",
                 update_mode, regional_border, refresh_border_mm, regional_repeats)
     try:

@@ -1396,9 +1396,9 @@ input[type="range"] {{ width: 100%; }}
       <h2>🔐 Google Account</h2>
       {auth_section}
     </div>
-    <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:center">
-      <div class="field" style="min-width:180px">
-        <label style="font-size:0.82em">Sync interval (sec)</label>
+    <div style="flex-shrink:0;display:flex;align-items:center;gap:12px">
+      <div class="field" style="min-width:140px;margin-bottom:0">
+        <label style="font-size:0.82em">Sync (sec)</label>
         <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600" style="font-size:0.85em">
       </div>
       <img id="inlinePreview" src="/image" alt="E-Ink Display"

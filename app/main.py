@@ -1711,9 +1711,12 @@ input[type="range"] {{ width: 100%; }}
     <h2>📶 WiFi Configuration</h2>
     <p class="note" style="margin-top:-8px;margin-bottom:12px">Manage WiFi connections. If the current connection breaks, the Pi will start a setup hotspot automatically.</p>
     <div id="wifiCurrentStatus" style="margin-bottom:12px"></div>
+    <h3>Available Networks</h3>
+    <div id="wifiScanList" style="margin-bottom:8px"><span style="color:var(--muted);font-size:0.85em">Click scan to search…</span></div>
+    <p style="margin-bottom:8px"><a href="#" onclick="event.preventDefault();scanWifiNetworks()" style="color:var(--accent);font-size:0.82em;text-decoration:none">↻ Scan networks</a></p>
     <div class="field">
       <label>Add a new WiFi network (in case the current one breaks)</label>
-      <input type="text" id="wifiSsid" placeholder="Network name (SSID)" style="margin-bottom:8px">
+      <input type="text" id="wifiSsid" placeholder="Network name (SSID) or pick from scan above" style="margin-bottom:8px">
       <input type="password" id="wifiPassword" placeholder="Password (leave empty for open)">
     </div>
     <button type="button" class="btn btn-small" style="width:100%;margin-top:4px" onclick="addWifiNetwork()">💾 Save WiFi Network</button>
@@ -1806,6 +1809,32 @@ async function addWifiNetwork() {{
     }}
   }} catch(e) {{
     alert('Error: ' + e.message);
+  }}
+}}
+async function scanWifiNetworks() {{
+  const list = document.getElementById('wifiScanList');
+  if (!list) return;
+  list.innerHTML = '<span style="color:var(--muted);font-size:0.85em">Scanning…</span>';
+  try {{
+    const r = await fetch('/api/wifi-scan');
+    const data = await r.json();
+    if (data.networks && data.networks.length) {{
+      let html = '<div style="display:flex;flex-direction:column;gap:4px">';
+      data.networks.forEach(function(n) {{
+        const lock = n.encrypted ? '🔒' : '🔓';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--input);border-radius:6px;cursor:pointer;font-size:0.85em" '
+          + 'onclick="document.getElementById(\'wifiSsid\').value=\'' + n.ssid.replace(/'/g, "\\'") + '\'">'
+          + '<span>' + lock + ' ' + n.ssid + '</span>'
+          + '<span style="color:var(--muted);font-size:0.85em">' + n.signal + ' dBm</span>'
+          + '</div>';
+      }});
+      html += '</div>';
+      list.innerHTML = html;
+    }} else {{
+      list.innerHTML = '<span style="color:var(--muted);font-size:0.85em">No networks found</span>';
+    }}
+  }} catch(e) {{
+    list.innerHTML = '<span style="color:var(--warn);font-size:0.85em">Scan failed: ' + e.message + '</span>';
   }}
 }}
 loadWifiStatus();

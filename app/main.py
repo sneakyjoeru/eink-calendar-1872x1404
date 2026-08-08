@@ -1395,16 +1395,14 @@ input[type="range"] {{ width: 100%; }}
     <div style="flex:1;min-width:0">
       <h2>🔐 Google Account</h2>
       {auth_section}
-      <h3 style="margin-top:16px">Syncing</h3>
-      <div class="field">
-        <label>Check Google for new events every (seconds)</label>
-        <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
-        <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
-      </div>
     </div>
-    <div style="flex-shrink:0;display:flex;align-items:center">
+    <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:center">
+      <div class="field" style="min-width:180px">
+        <label style="font-size:0.82em">Sync interval (sec)</label>
+        <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600" style="font-size:0.85em">
+      </div>
       <img id="inlinePreview" src="/image" alt="E-Ink Display"
-           style="max-height:100%;max-width:200px;border-radius:8px;border:1px solid var(--border);cursor:pointer;image-rendering:auto"
+           style="max-height:160px;max-width:180px;border-radius:8px;border:1px solid var(--border);cursor:pointer;image-rendering:auto"
            onclick="openPreviewPopup()"
            onerror="this.style.display='none'">
     </div>
@@ -1822,11 +1820,12 @@ async function scanWifiNetworks() {{
       let html = '<div style="display:flex;flex-direction:column;gap:4px">';
       data.networks.forEach(function(n) {{
         const lock = n.encrypted ? '🔒' : '🔓';
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--input);border-radius:6px;cursor:pointer;font-size:0.85em" '
-          + 'onclick="document.getElementById(\'wifiSsid\').value=\'' + n.ssid.replace(/'/g, "\\'") + '\'">'
-          + '<span>' + lock + ' ' + n.ssid + '</span>'
-          + '<span style="color:var(--muted);font-size:0.85em">' + n.signal + ' dBm</span>'
-          + '</div>';
+        const safeSsid = n.ssid.replace(/"/g, '&quot;').replace(/'/g, "&#39;");
+        const div = document.createElement('div');
+        div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--input);border-radius:6px;cursor:pointer;font-size:0.85em';
+        div.innerHTML = '<span>' + lock + ' ' + safeSsid + '</span><span style="color:var(--muted);font-size:0.85em">' + n.signal + ' dBm</span>';
+        div.onclick = function() {{ document.getElementById('wifiSsid').value = n.ssid; }};
+        html += div.outerHTML;
       }});
       html += '</div>';
       list.innerHTML = html;

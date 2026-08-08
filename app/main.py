@@ -1396,13 +1396,13 @@ input[type="range"] {{ width: 100%; }}
       <h2>🔐 Google Account</h2>
       {auth_section}
     </div>
-    <div style="flex-shrink:0;display:flex;align-items:center;gap:12px">
+    <div style="flex-shrink:0;display:flex;align-items:flex-end;gap:12px">
       <div class="field" style="min-width:140px;margin-bottom:0">
         <label style="font-size:0.82em">Sync (sec)</label>
         <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600" style="font-size:0.85em">
       </div>
       <img id="inlinePreview" src="/image" alt="E-Ink Display"
-           style="max-height:160px;max-width:180px;border-radius:8px;border:1px solid var(--border);cursor:pointer;image-rendering:auto"
+           style="max-height:80px;max-width:90px;border-radius:6px;border:1px solid var(--border);cursor:pointer;image-rendering:auto"
            onclick="openPreviewPopup()"
            onerror="this.style.display='none'">
     </div>

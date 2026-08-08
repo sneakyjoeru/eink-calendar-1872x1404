@@ -586,6 +586,11 @@ async def settings_page(request: Request):
     crossed_dim = s.get("crossed_event_dim", False)
     ts_mod = s.get("text_size_modifier", 0)
     outline_w = s.get("text_outline_width", 5)
+    fdow = int(s.get("first_day_of_week", 0))
+    _DOW_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    sel_fdow = [''] * 7
+    if 0 <= fdow <= 6:
+        sel_fdow[fdow] = 'selected'
 
     return _SETTINGS_HTML.format(
         saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
@@ -693,6 +698,9 @@ async def settings_page(request: Request):
         show_desc='checked' if s.get('show_descriptions', True) else '',
         ts_mod=ts_mod,
         outline_w=outline_w,
+        sel_fdow_0=sel_fdow[0], sel_fdow_1=sel_fdow[1], sel_fdow_2=sel_fdow[2],
+        sel_fdow_3=sel_fdow[3], sel_fdow_4=sel_fdow[4], sel_fdow_5=sel_fdow[5],
+        sel_fdow_6=sel_fdow[6],
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
         lan_ip=lan_ip,
@@ -750,6 +758,7 @@ async def update_settings(request: Request):
         "text_size_modifier": int(fd.get("text_size_modifier", 0)),
         "text_outline_width": max(0, min(10, int(fd.get("text_outline_width", 5)))),
         "selected_calendars": fd.getlist("selected_calendars"),
+        "first_day_of_week": int(fd.get("first_day_of_week", 0)),
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
     settings_store.update(data)
@@ -1165,6 +1174,78 @@ async def wifi_connect(request: Request):
     return {"ok": True, "ssid": ssid}
 
 
+@app.get("/api/wifi-status")
+async def wifi_status():
+    """Return current WiFi connection status and list of saved networks."""
+    import subprocess
+    try:
+        r = subprocess.run(["nmcli", "-t", "-f", "ACTIVE,SSID", "connection", "show", "--active"],
+                           capture_output=True, text=True, timeout=10)
+        ssid = ""
+        for line in r.stdout.strip().splitlines():
+            if line.startswith("yes:"):
+                ssid = line.split(":", 1)[1]
+                break
+        if not ssid:
+            r2 = subprocess.run(["nmcli", "-t", "-f", "CONNECTION,DEVICE", "device", "status"],
+                                capture_output=True, text=True, timeout=10)
+            for line in r2.stdout.strip().splitlines():
+                parts = line.split(":")
+                if len(parts) >= 2 and parts[1] == "wlan0" and parts[0] != "--":
+                    ssid = parts[0]
+                    break
+    except Exception:
+        ssid = ""
+
+    ip = ""
+    try:
+        r = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5)
+        ips = r.stdout.strip().split()
+        if ips:
+            ip = ips[0]
+    except Exception:
+        pass
+
+    saved = []
+    try:
+        r = subprocess.run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+                           capture_output=True, text=True, timeout=10)
+        for line in r.stdout.strip().splitlines():
+            parts = line.split(":")
+            if len(parts) >= 2 and "wifi" in parts[1]:
+                saved.append(parts[0])
+    except Exception:
+        pass
+
+    return {"connected": bool(ssid), "ssid": ssid, "ip": ip, "saved_networks": saved}
+
+
+@app.post("/api/wifi-add")
+async def wifi_add(request: Request):
+    """Add a new WiFi network to NetworkManager (does not switch immediately)."""
+    data = await request.json()
+    ssid = data.get("ssid", "").strip()
+    password = data.get("password", "")
+    if not ssid:
+        return JSONResponse({"ok": False, "error": "SSID is required"}, status_code=400)
+
+    import subprocess
+    try:
+        cmd = ["nmcli", "connection", "add", "type", "wifi", "ifname", "wlan0",
+               "con-name", ssid, "ssid", ssid,
+               "wifi-sec.key-mgmt", "wpa-psk",
+               "wifi-sec.psk", password] if password else \
+              ["nmcli", "connection", "add", "type", "wifi", "ifname", "wlan0",
+               "con-name", ssid, "ssid", ssid]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            return JSONResponse({"ok": False, "error": r.stderr.strip() or "Failed to add"}, status_code=500)
+        logger.info("WiFi network saved via settings: %s", ssid)
+        return {"ok": True, "ssid": ssid}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 # ---- Google OAuth routes ----
 
 # Google blocks IP addresses in redirect URIs. The workaround:
@@ -1310,16 +1391,22 @@ input[type="range"] {{ width: 100%; }}
 
 <form id="settingsForm" action="/api/settings" method="POST">
 <div class="top-row">
-  <div class="card">
-    <h2>🔐 Google Account</h2>
-    {auth_section}
-    <h3 style="margin-top:16px">Live Preview</h3>
-    <div style="text-align:center;margin-top:8px">
+  <div class="card" style="display:flex;gap:16px;align-items:stretch">
+    <div style="flex:1;min-width:0">
+      <h2>🔐 Google Account</h2>
+      {auth_section}
+      <h3 style="margin-top:16px">Syncing</h3>
+      <div class="field">
+        <label>Check Google for new events every (seconds)</label>
+        <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
+        <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
+      </div>
+    </div>
+    <div style="flex-shrink:0;display:flex;align-items:center">
       <img id="inlinePreview" src="/image" alt="E-Ink Display"
-           style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--border);cursor:pointer;image-rendering:auto"
+           style="max-height:100%;max-width:200px;border-radius:8px;border:1px solid var(--border);cursor:pointer;image-rendering:auto"
            onclick="openPreviewPopup()"
            onerror="this.style.display='none'">
-      <p class="note" style="margin-top:4px">Click the image to view full-size. Updates automatically.</p>
     </div>
   </div>
 </div>
@@ -1355,27 +1442,12 @@ input[type="range"] {{ width: 100%; }}
   </div>
 
   <div class="card">
-    <h2>📅 Events &amp; View</h2>
-    <div class="field">
-      <label>Full-day events shown per day</label>
-      <select name="max_full_day_events">
-        <option value="0" {sel_fd_0}>Hide all-day events</option>
-        <option value="1" {sel_fd_1}>1</option>
-        <option value="2" {sel_fd_2}>2</option>
-        <option value="3" {sel_fd_3}>3</option>
-      </select>
-    </div>
+    <h2>📅 Events</h2>
     <label class="check-row">
       <input type="checkbox" name="show_descriptions" value="1" {show_desc}>
       <span>Show event location &amp; description on cards</span>
     </label>
     <p class="note">Location (prefixed “@”) and description under the title/time, when the event has them and there's room.</p>
-    <h3>Syncing</h3>
-    <div class="field">
-      <label>Check Google for new events every (seconds)</label>
-      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
-      <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
-    </div>
   </div>
 
   <div class="card">
@@ -1384,6 +1456,20 @@ input[type="range"] {{ width: 100%; }}
     <div class="row">
       <div class="field"><label>Day starts at</label><input type="time" name="day_start" value="{day_start}"></div>
       <div class="field"><label>Day ends at</label><input type="time" name="day_end" value="{day_end}"></div>
+    </div>
+    <h3>Week</h3>
+    <div class="field">
+      <label>First day of week</label>
+      <select name="first_day_of_week">
+        <option value="0" {sel_fdow_0}>Monday</option>
+        <option value="1" {sel_fdow_1}>Tuesday</option>
+        <option value="2" {sel_fdow_2}>Wednesday</option>
+        <option value="3" {sel_fdow_3}>Thursday</option>
+        <option value="4" {sel_fdow_4}>Friday</option>
+        <option value="5" {sel_fdow_5}>Saturday</option>
+        <option value="6" {sel_fdow_6}>Sunday</option>
+      </select>
+      <div class="note">Controls which day starts the week in Week, Month and 35-day views.</div>
     </div>
     <h3>Formats</h3>
     <div class="field">
@@ -1426,6 +1512,29 @@ input[type="range"] {{ width: 100%; }}
 <div class="settings-grid">
 
   <div class="card">
+    <h2>📅 View Mode</h2>
+    <div class="field">
+      <label>View Mode</label>
+      <select name="view_mode">
+        <option value="month" {sel_month}>Month (current month)</option>
+        <option value="35days" {sel_35days}>Month (5 weeks, Mon-start)</option>
+        <option value="week" {sel_week}>Week (Mon–Sun)</option>
+        <option value="7days" {sel_7days}>7 Days (from today)</option>
+        <option value="5days" {sel_5days}>5 Days (from today)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Full-day events shown per day</label>
+      <select name="max_full_day_events">
+        <option value="0" {sel_fd_0}>Hide all-day events</option>
+        <option value="1" {sel_fd_1}>1</option>
+        <option value="2" {sel_fd_2}>2</option>
+        <option value="3" {sel_fd_3}>3</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>🎨 Appearance</h2>
     <div class="row">
       <div class="field"><label>Brightness</label>
@@ -1461,20 +1570,6 @@ input[type="range"] {{ width: 100%; }}
       <select name="dim_style">
         <option value="normal" {sel_ds_normal}>White fill + black border</option>
         <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>📅 View Mode</h2>
-    <div class="field">
-      <label>View Mode</label>
-      <select name="view_mode">
-        <option value="month" {sel_month}>Month (current month)</option>
-        <option value="35days" {sel_35days}>Month (5 weeks, Mon-start)</option>
-        <option value="week" {sel_week}>Week (Mon–Sun)</option>
-        <option value="7days" {sel_7days}>7 Days (from today)</option>
-        <option value="5days" {sel_5days}>5 Days (from today)</option>
       </select>
     </div>
   </div>
@@ -1612,6 +1707,22 @@ input[type="range"] {{ width: 100%; }}
     </div>
   </div>
 
+  <div class="card">
+    <h2>📶 WiFi Configuration</h2>
+    <p class="note" style="margin-top:-8px;margin-bottom:12px">Manage WiFi connections. If the current connection breaks, the Pi will start a setup hotspot automatically.</p>
+    <div id="wifiCurrentStatus" style="margin-bottom:12px"></div>
+    <div class="field">
+      <label>Add a new WiFi network (in case the current one breaks)</label>
+      <input type="text" id="wifiSsid" placeholder="Network name (SSID)" style="margin-bottom:8px">
+      <input type="password" id="wifiPassword" placeholder="Password (leave empty for open)">
+    </div>
+    <button type="button" class="btn btn-small" style="width:100%;margin-top:4px" onclick="addWifiNetwork()">💾 Save WiFi Network</button>
+    <div class="field" style="margin-top:12px">
+      <label>Saved networks</label>
+      <div id="wifiSavedList" style="font-size:0.85em"></div>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -1644,6 +1755,60 @@ function refreshInlinePreview() {{
   if (img) img.src = '/image?t=' + Date.now();
 }}
 setInterval(refreshInlinePreview, 15000);
+async function loadWifiStatus() {{
+  try {{
+    const r = await fetch('/api/wifi-status');
+    const d = await r.json();
+    const el = document.getElementById('wifiCurrentStatus');
+    if (el) {{
+      let html = '<div style="padding:8px 12px;background:var(--input);border-radius:8px;font-size:0.85em">';
+      if (d.connected) {{
+        html += '<span class="badge badge-ok">✓ Connected</span> <b>' + d.ssid + '</b>';
+        if (d.ip) html += ' · ' + d.ip;
+      }} else {{
+        html += '<span style="color:var(--warn)">⚠ Not connected</span>';
+      }}
+      html += '</div>';
+      el.innerHTML = html;
+    }}
+    const list = document.getElementById('wifiSavedList');
+    if (list && d.saved_networks) {{
+      if (d.saved_networks.length) {{
+        list.innerHTML = d.saved_networks.map(n => {{
+          let s = '· ' + n;
+          if (n === d.ssid) s += ' <span class="badge badge-ok" style="font-size:0.7em">active</span>';
+          return s;
+        }}).join('<br>');
+      }} else {{
+        list.innerHTML = '<span style="color:var(--muted)">No saved networks</span>';
+      }}
+    }}
+  }} catch(e) {{}}
+}}
+async function addWifiNetwork() {{
+  const ssid = document.getElementById('wifiSsid').value.trim();
+  const password = document.getElementById('wifiPassword').value;
+  if (!ssid) {{ alert('Enter a network name'); return; }}
+  try {{
+    const r = await fetch('/api/wifi-add', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ssid, password}}),
+    }});
+    const d = await r.json();
+    if (d.ok) {{
+      document.getElementById('wifiSsid').value = '';
+      document.getElementById('wifiPassword').value = '';
+      loadWifiStatus();
+      alert('WiFi network saved: ' + ssid);
+    }} else {{
+      alert('Error: ' + (d.error || 'Failed to save'));
+    }}
+  }} catch(e) {{
+    alert('Error: ' + e.message);
+  }}
+}}
+loadWifiStatus();
 function applyPreset() {{
   var sel = document.getElementById('presetSelect');
   var desc = document.getElementById('presetDesc');

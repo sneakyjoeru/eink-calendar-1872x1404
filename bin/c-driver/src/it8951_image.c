@@ -117,6 +117,9 @@ int it8951_display_image(it8951_t *dev, const char *path,
        and destroyed font antialiasing. 8bpp keeps all 256 gray levels. */
     it8951_display_8bpp(dev, canvas, 0, 0, screen_w, screen_h, mode);
 
+    /* Save current as last image for preview endpoint. */
+    stbi_write_png(LAST_IMG_PATH, screen_w, screen_h, 1, canvas, screen_w);
+
     free(canvas);
     free(resized);
     stbi_image_free(img);

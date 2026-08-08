@@ -33,8 +33,6 @@ app = FastAPI(title="E-Ink Calendar")
 _last_events: list[dict] = []
 _last_events_hash: str = ""
 _last_time_line_render: float = 0.0
-_last_tl_minute: str = ""        # wall-clock minute key of the last time-line update (dedup)
-_last_event_poll: float = 0.0     # ts of the last event-change poll
 _last_render_date: str = ""  # track day changes for full refresh
 _render_lock = threading.Lock()
 _last_render_duration: float = 2.0  # measured render time (updated each render)
@@ -143,14 +141,12 @@ def _events_hash(events: list[dict]) -> str:
 # ---- Rendering pipeline ----
 
 def do_render(force: bool = False, force_full: bool = False,
-              full_refresh_repeats: int = 0, hard_clear: bool = False) -> bool:
+              full_refresh_repeats: int = 0) -> bool:
     """Fetch events + render + display. Thread-safe with timeout.
     force_full: bypass diff, do full screen refresh.
     full_refresh_repeats: number of full-screen GC16 clean refresh passes.
         0 = auto-determine (2 for day change, user setting for interval/dim,
-        caller-specified for startup/manual).
-    hard_clear: force a GC16 flashing clean refresh even in b/w mode (used for
-        explicit Save & Render — automatic b/w full refreshes stay flash-free DU)."""
+        caller-specified for startup/manual)."""
     logger.info("do_render(force=%s) starting", force)
     _render_start = time.time()
     if not _render_lock.acquire(timeout=120):
@@ -172,9 +168,6 @@ def do_render(force: bool = False, force_full: bool = False,
         elif settings["view_mode"] == "7days":
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start + datetime.timedelta(days=7)
-        elif settings["view_mode"] == "5days":
-            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            end = start + datetime.timedelta(days=5)
         else:  # week
             start = now - datetime.timedelta(days=now.weekday())
             start = start.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -249,9 +242,6 @@ def do_render(force: bool = False, force_full: bool = False,
             time_line_style=settings.get("time_line_style", "dotted"),
             bw_mode=settings.get("bw_mode", False),
             dim_style=settings.get("dim_style", "normal"),
-            show_descriptions=settings.get("show_descriptions", True),
-            text_outline_width=int(settings.get("text_outline_width", 5)),
-            brightness=settings.get("brightness", 1.4),
             now=now,
         )
         ok = driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
@@ -260,8 +250,7 @@ def do_render(force: bool = False, force_full: bool = False,
                                      refresh_border_mm=settings.get("refresh_border_mm", 5),
                                      full_refresh_repeats=full_refresh_repeats,
                                      regional_hard_repeats=max(1, int(settings.get("regional_hard_flashes", 1))),
-                                     bw_mode=settings.get("bw_mode", False),
-                                     hard_clear=hard_clear)
+                                     bw_mode=settings.get("bw_mode", False))
         if ok:
             _last_render_duration = time.time() - _render_start
             logger.info("Screen updated (events_changed=%s, %d events, %.1fs)",
@@ -289,38 +278,13 @@ def render_status_screen(msg: str, sub: str = "") -> bool:
     return driver.render_to_screen(img, brightness=1.0)
 
 
-def render_hotspot_screen(ssid: str = "", pw: str = "", ip: str = "") -> bool:
-    """Show the WiFi-provisioning QR screen while the Pi hosts its own hotspot:
-    a QR to join the hotspot + a QR/URL for the setup page."""
-    ssid = ssid or wifi_setup.hotspot_ssid()
-    pw = pw or wifi_setup.hotspot_password()
-    ip = ip or wifi_setup.hotspot_ip()
-    portal_url = f"{_scheme()}://{ip}:{config.APP_PORT}/wifi-setup"
-    img = render.render_wifi_hotspot(ssid, pw, portal_url,
-                                     wifi_setup.get_hotspot_qr_text())
-    return driver.render_to_screen(img, brightness=1.0, force_full=True)
-
-
-def render_after_restore() -> None:
-    """Re-render the appropriate screen once connectivity is restored."""
-    logger.info("Connectivity restored — re-rendering")
-    if not calendar_client.is_configured():
-        img = render.render_setup_required(_get_lan_ip(), config.APP_PORT,
-                                           ssl=config.SSL_ENABLED)
-        driver.render_to_screen(img, brightness=1.0)
-    elif not calendar_client.is_authenticated():
-        render_setup_screen()
-    else:
-        do_render(force=True, force_full=True)
-
-
 # ---- Background scheduler ----
 _scheduler_running = True
 
 
 def background_loop():
     """Background thread: poll events + update time line."""
-    global _scheduler_running, _last_time_line_render, _last_tl_minute, _last_event_poll
+    global _scheduler_running, _last_time_line_render
     logger.info("Background scheduler started")
 
     while _scheduler_running:
@@ -336,44 +300,88 @@ def background_loop():
                 time.sleep(300)
                 continue
 
-            # --- Current-time line + event polling ------------------------
+            # Event poll (checks for event changes in all views)
             poll_interval = s.get("event_poll_interval_sec", 60)
             view_mode = s.get("view_mode", "week")
-            tl_interval_min = max(1, int(s.get("time_line_interval_min", 15)))
-            tl_active = view_mode in ("week", "7days", "5days") and s.get("show_time_line", True)
+            tl_interval_min = s.get("time_line_interval_min", 15)
 
+            # For 1-min smooth updates, poll more frequently to catch the minute boundary
+            if tl_interval_min == 1 and view_mode in ("week", "7days"):
+                effective_poll = min(poll_interval, 5)
+            else:
+                effective_poll = poll_interval
+
+            # Time-line update — only for week/7days views
+            # Tied to fraction of hour: update at X:00, X:15, X:30, X:45 etc.
+            tl_interval = tl_interval_min * 60
+
+            # Determine if this poll should trigger a time-line update
             now_dt = _now()
             now_ts = time.time()
+            should_update_tl = False
 
-            # The time line updates at wall-clock minutes that are a whole
-            # fraction of the hour (minute % interval == 0): e.g. a 10-min
-            # interval fires at :00, :10, :20 ... This is anchored to the clock,
-            # so it is independent of when the app was (re)started. We pre-render
-            # a few seconds early and display exactly on the boundary.
-            fired_tl = False
-            if tl_active:
-                next_dt = (now_dt + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
-                secs_to_next = 60 - now_dt.second - now_dt.microsecond / 1e6
-                next_key = next_dt.strftime("%Y-%m-%d %H:%M")
-                is_boundary = (next_dt.minute % tl_interval_min == 0)
-                if is_boundary and 0 < secs_to_next <= 12 and next_key != _last_tl_minute:
-                    target_now = next_dt
+            if tl_interval_min == 1:
+                # 1-min: trigger when we're within 8s of the next minute boundary
+                # This gives enough time to prepare the image before :00
+                secs_to_next = 60 - now_dt.second
+                if secs_to_next <= 9 and secs_to_next > 0:
+                    last_min = datetime.datetime.fromtimestamp(_last_time_line_render).strftime("%Y-%m-%d %H:%M")
+                    next_min = (now_dt + datetime.timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
+                    should_update_tl = (last_min != next_min)
+            else:
+                # Aligned to hour: 0, 15, 30, 45 etc.
+                if now_dt.minute % tl_interval_min == 0 and now_dt.second < effective_poll:
+                    should_update_tl = (now_ts - _last_time_line_render >= tl_interval)
+
+            # Skip the time-line update when the current time is outside the
+            # configured day range. Outside day_start..day_end the time-line is
+            # drawn as a static placeholder (fixed position), so there is nothing
+            # meaningful to refresh every tick — avoid unnecessary partial (or
+            # full) refreshes, especially when partial refresh is selected.
+            if should_update_tl and view_mode in ("week", "7days"):
+                day_start = s.get("day_start", "07:00")
+                day_end = s.get("day_end", "23:00")
+                ds_h, ds_m = (int(x) for x in day_start.split(":"))
+                de_h, de_m = (int(x) for x in day_end.split(":"))
+                ds_min = ds_h * 60 + ds_m
+                de_min = de_h * 60 + de_m
+                # For 1-min updates, target_now is the NEXT minute; check that too.
+                check_min = now_dt.hour * 60 + now_dt.minute
+                if tl_interval_min == 1:
+                    check_min = check_min + 1
+                if check_min < ds_min or check_min > de_min:
+                    should_update_tl = False
+                    logger.debug("Time-line placeholder outside day range (%s–%s), skipping update",
+                                 day_start, day_end)
+
+            if view_mode in ("week", "7days") and should_update_tl:
+                # For 1-min interval: render with current minute and display immediately
+                # For larger intervals: pre-render then wait for exact boundary
+                if tl_interval_min == 1:
+                    # Pre-render for the NEXT minute, then wait for :00 to display
+                    target_now = (now_dt + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
                     _render_start = time.time()
+
                     if not _render_lock.acquire(timeout=120):
                         pass
                     try:
                         settings = settings_store.load()
-                        if settings["view_mode"] in ("7days", "5days"):
+                        if settings["view_mode"] == "7days":
                             ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
+                            ev_end = ev_start + datetime.timedelta(days=7)
                         else:
-                            ev_start = (target_now - datetime.timedelta(days=target_now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-                        ev_days = 5 if settings["view_mode"] == "5days" else 7
-                        ev_end = ev_start + datetime.timedelta(days=ev_days)
+                            ev_start = target_now - datetime.timedelta(days=target_now.weekday())
+                            ev_start = ev_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                            ev_end = ev_start + datetime.timedelta(days=7)
+
                         events = calendar_client.fetch_events(
                             ev_start, ev_end, settings.get("selected_calendars") or None)
+
                         img = render.render_calendar(
-                            view_mode=settings["view_mode"], events=events,
-                            day_start=settings["day_start"], day_end=settings["day_end"],
+                            view_mode=settings["view_mode"],
+                            events=events,
+                            day_start=settings["day_start"],
+                            day_end=settings["day_end"],
                             max_full_day=settings["max_full_day_events"],
                             time_format=settings.get("time_format", "24h"),
                             date_format=settings.get("date_format", ""),
@@ -381,45 +389,122 @@ def background_loop():
                             crossed_event_dim=settings.get("crossed_event_dim", False),
                             dim_past_events=settings.get("dim_past_events", False),
                             text_size_modifier=settings.get("text_size_modifier", 0),
-                            show_time_line=settings.get("show_time_line", True),
-                            time_line_style=settings.get("time_line_style", "dotted"),
-                            bw_mode=settings.get("bw_mode", False),
-                            dim_style=settings.get("dim_style", "normal"),
-                            show_descriptions=settings.get("show_descriptions", True),
-                            text_outline_width=int(settings.get("text_outline_width", 5)),
-                            brightness=settings.get("brightness", 1.4),
                             now=target_now,
                         )
                     finally:
                         _render_lock.release()
+
                     prepare_time = time.time() - _render_start
-                    # wait for the exact minute boundary, then display
-                    ndt = datetime.datetime.now()
-                    sleep_sec = 60 - ndt.second - ndt.microsecond / 1e6
-                    if 0 < sleep_sec <= 60:
+
+                    # Wait for exact minute boundary (use wall clock for sleep timing))
+                    now_dt2 = datetime.datetime.now()
+                    sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
+                    if sleep_sec > 0:
                         time.sleep(sleep_sec)
+
+                    # Check if a periodic full-screen refresh is due (the time-line
+                    # path bypasses do_render, so the interval check there never
+                    # runs — without this, the user's "full-screen clean refresh
+                    # every N hours" setting is silently ignored on hour changes).
+                    full_interval = settings.get("full_refresh_interval_hours", 0)
+                    tl_force_full = full_interval and driver.needs_full_refresh(full_interval)
+                    tl_full_repeats = 0
+                    if tl_force_full:
+                        tl_full_repeats = max(1, int(settings.get("full_refresh_interval", 1)))
+                        logger.info("Time-line update: full-refresh interval (%dh) elapsed, forcing full (%dx)",
+                                    full_interval, tl_full_repeats)
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
-                                            force_full=False,
+                                            force_full=tl_force_full,
+                                            full_refresh_repeats=tl_full_repeats,
                                             update_mode=settings.get("update_mode", "soft"),
                                             refresh_border_mm=settings.get("refresh_border_mm", 5),
                                             bw_mode=settings.get("bw_mode", False))
-                    _last_tl_minute = next_key
                     _last_time_line_render = time.time()
-                    _last_event_poll = _last_time_line_render   # events were just fetched
-                    fired_tl = True
-                    logger.info("Time-line update -> %s (every %dm): prepared %.1fs, landed :%02d",
-                                next_key[-5:], tl_interval_min, prepare_time,
-                                int(datetime.datetime.now().second))
+                    logger.info("Time-line %s update (1-min): prepared in %.1fs, landed at :%02d.%01d",
+                                "full" if tl_force_full else "regional",
+                                prepare_time,
+                                int(datetime.datetime.now().second),
+                                int(datetime.datetime.now().microsecond / 100000))
+                else:
+                    # Larger interval: pre-render then wait for exact boundary
+                    _render_start = time.time()
 
-            # Event-change poll at the configured interval, independent of the
-            # time-line cadence.
-            if not fired_tl and (now_ts - _last_event_poll >= poll_interval):
-                do_render()
-                _last_event_poll = time.time()
+                    # Compute target time = start of this interval slot
+                    target_now = now_dt.replace(second=0, microsecond=0)
 
-            # Tick often enough to catch the pre-render window every minute when
-            # the time line is active; otherwise sleep up to the poll interval.
-            time.sleep(3 if tl_active else min(poll_interval, 30))
+                    # --- Phase 1: fetch events + render to image (no display) ---
+                    if not _render_lock.acquire(timeout=120):
+                        pass
+                    try:
+                        settings = settings_store.load()
+                        if settings["view_mode"] == "7days":
+                            ev_start = target_now.replace(hour=0, minute=0, second=0, microsecond=0)
+                            ev_end = ev_start + datetime.timedelta(days=7)
+                        else:
+                            ev_start = target_now - datetime.timedelta(days=target_now.weekday())
+                            ev_start = ev_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                            ev_end = ev_start + datetime.timedelta(days=7)
+
+                        events = calendar_client.fetch_events(
+                            ev_start, ev_end, settings.get("selected_calendars") or None)
+
+                        img = render.render_calendar(
+                            view_mode=settings["view_mode"],
+                            events=events,
+                            day_start=settings["day_start"],
+                            day_end=settings["day_end"],
+                            max_full_day=settings["max_full_day_events"],
+                            time_format=settings.get("time_format", "24h"),
+                            date_format=settings.get("date_format", ""),
+                            settings_url=f"{_scheme()}://{_get_lan_ip()}:{config.APP_PORT}",
+                            crossed_event_dim=settings.get("crossed_event_dim", False),
+                            dim_past_events=settings.get("dim_past_events", False),
+                            text_size_modifier=settings.get("text_size_modifier", 0),
+                            now=target_now,
+                        )
+                    finally:
+                        _render_lock.release()
+
+                    prepare_time = time.time() - _render_start
+
+                    # --- Phase 2: wait for exact minute boundary, then display ---
+                    now_dt2 = datetime.datetime.now()
+                    sleep_sec = 60 - now_dt2.second - now_dt2.microsecond / 1e6
+                    if sleep_sec > 0:
+                        time.sleep(sleep_sec)
+
+                    display_start = time.time()
+                    # Check if a periodic full-screen refresh is due (the time-line
+                    # path bypasses do_render, so the interval check there never
+                    # runs — without this, the user's "full-screen clean refresh
+                    # every N hours" setting is silently ignored on hour changes).
+                    full_interval = settings.get("full_refresh_interval_hours", 0)
+                    tl_force_full = full_interval and driver.needs_full_refresh(full_interval)
+                    tl_full_repeats = 0
+                    if tl_force_full:
+                        tl_full_repeats = max(1, int(settings.get("full_refresh_interval", 1)))
+                        logger.info("Time-line update: full-refresh interval (%dh) elapsed, forcing full (%dx)",
+                                    full_interval, tl_full_repeats)
+                    driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
+                                            force_full=tl_force_full,
+                                            full_refresh_repeats=tl_full_repeats,
+                                            update_mode=settings.get("update_mode", "soft"),
+                                            refresh_border_mm=settings.get("refresh_border_mm", 5),
+                                            bw_mode=settings.get("bw_mode", False))
+                    _last_time_line_render = time.time()
+                    display_time = _last_time_line_render - display_start
+                    logger.info("Time-line %s update: prepared in %.1fs, display %.1fs, landed at :%02d.%01d",
+                                "full" if tl_force_full else "regional",
+                                prepare_time, display_time,
+                                int(datetime.datetime.now().second),
+                                int(datetime.datetime.now().microsecond / 100000))
+            else:
+                # Regular poll for event changes (no forced refresh)
+                # Skip if smooth interval is 1 min — smooth updates already fetch events
+                if not (tl_interval_min == 1 and view_mode in ("week", "7days")):
+                    do_render()
+
+            time.sleep(effective_poll)
         except Exception as e:
             logger.error("Background loop error: %s", e)
             time.sleep(60)
@@ -442,11 +527,9 @@ async def startup():
     # Auto-detect timezone in background (don't block startup)
     _auto_detect_timezone_async()
 
-    # Initial screen. If we have no network yet, don't show a useless LAN-IP
-    # QR — the connectivity monitor will raise the hotspot and render its QR.
-    if not wifi_setup.is_online():
-        render_status_screen("Connecting to WiFi…", "If it can't connect, a setup hotspot will start")
-    elif not calendar_client.is_configured():
+    # Initial screen
+    if not calendar_client.is_configured():
+        ssl_on = " [HTTPS]" if config.SSL_ENABLED else ""
         img = render.render_setup_required(lan_ip, config.APP_PORT, ssl=config.SSL_ENABLED)
         driver.render_to_screen(img, brightness=1.0)
     elif not calendar_client.is_authenticated():
@@ -461,12 +544,8 @@ async def startup():
     t = threading.Thread(target=background_loop, daemon=True)
     t.start()
 
-    # Start WiFi connectivity monitor. On sustained connectivity loss it raises
-    # a hotspot and renders the join QR (on_hotspot); on reconnect it re-renders
-    # the calendar/settings (on_restore).
-    wifi_setup.start_monitor(interval=60,
-                             on_hotspot=render_hotspot_screen,
-                             on_restore=render_after_restore)
+    # Start WiFi connectivity monitor (hotspot fallback)
+    wifi_setup.start_monitor(interval=120)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -523,21 +602,21 @@ async def settings_page(request: Request):
         <div class="alert">⚠️ Place your <code>client_secret.json</code> below:</div>
         <div style="display:flex;gap:8px">
           <input type="file" id="secretFile" accept=".json" style="flex:1;padding:6px;background:#0f3460;color:#eee;border-radius:6px;border:1px solid #333;font-size:0.85em">
-          <button type="button" class="btn btn-small" onclick="uploadSecret()" style="white-space:nowrap">Upload</button>
+          <button class="btn btn-small" onclick="uploadSecret()" style="white-space:nowrap">Upload</button>
         </div>
         <p id="uploadStatus" style="font-size:0.8em;margin-top:6px"></p>
         '''
     elif not authenticated:
         auth_section = '''
         <p style="margin-bottom:10px">Click below to get the authorization link, then paste the code back.</p>
-        <button type="button" class="btn btn-auth" onclick="startGoogleAuth()">🔐 Login with Google</button>
+        <button class="btn btn-auth" onclick="startGoogleAuth()">🔐 Login with Google</button>
         <div id="authFlow" style="display:none;margin-top:12px">
           <p>1. Open this link in your browser:</p>
           <p><a id="authUrl" href="#" target="_blank" style="word-break:break-all;color:#4285F4"></a></p>
           <p style="margin-top:10px">2. Authorize. When the redirect fails, <b>copy the full URL</b> from the address bar and paste it below.</p>
           <p>3. Paste the redirect URL or just the code:</p>
           <input id="authCode" type="text" style="width:100%;padding:8px;margin-bottom:8px" placeholder="Paste the full redirect URL or just the code">
-          <button type="button" class="btn btn-primary" onclick="exchangeCode()">✓ Exchange Code</button>
+          <button class="btn btn-primary" onclick="exchangeCode()">✓ Exchange Code</button>
           <p id="authStatus" style="margin-top:8px;font-size:0.85em"></p>
         </div>
         '''
@@ -550,7 +629,6 @@ async def settings_page(request: Request):
     sel_35days = "selected" if s["view_mode"] == "35days" else ""
     sel_week = "selected" if s["view_mode"] == "week" else ""
     sel_7days = "selected" if s["view_mode"] == "7days" else ""
-    sel_5days = "selected" if s["view_mode"] == "5days" else ""
     sel_24h = "selected" if s.get("time_format", "24h") == "24h" else ""
     sel_12h = "selected" if s.get("time_format", "24h") == "12h" else ""
     tz = s.get("timezone", "")
@@ -571,7 +649,6 @@ async def settings_page(request: Request):
     dim_past = s.get("dim_past_events", False)
     crossed_dim = s.get("crossed_event_dim", False)
     ts_mod = s.get("text_size_modifier", 0)
-    outline_w = s.get("text_outline_width", 5)
 
     return _SETTINGS_HTML.format(
         saved_html='<div class="badge badge-ok" style="display:block;text-align:center;margin-bottom:12px;padding:8px">✓ Settings saved</div>' if saved else "",
@@ -580,7 +657,6 @@ async def settings_page(request: Request):
         sel_35days=sel_35days,
         sel_week=sel_week,
         sel_7days=sel_7days,
-        sel_5days=sel_5days,
         sel_24h=sel_24h,
         sel_12h=sel_12h,
         day_start=s["day_start"],
@@ -588,12 +664,11 @@ async def settings_page(request: Request):
         max_fd=s["max_full_day_events"],
         tl_interval=s["time_line_interval_min"],
         sel_tl_1='selected' if s['time_line_interval_min']==1 else '',
-        sel_tl_2='selected' if s['time_line_interval_min']==2 else '',
         sel_tl_5='selected' if s['time_line_interval_min']==5 else '',
         sel_tl_10='selected' if s['time_line_interval_min']==10 else '',
         sel_tl_15='selected' if s['time_line_interval_min']==15 else '',
-        sel_tl_20='selected' if s['time_line_interval_min']==20 else '',
         sel_tl_30='selected' if s['time_line_interval_min']==30 else '',
+        sel_tl_60='selected' if s['time_line_interval_min']==60 else '',
         fr_val=s.get('full_refresh_interval_hours', 6),
         sel_fr_0='selected' if s.get('full_refresh_interval_hours', 6)==0 else '',
         sel_fr_0_5='selected' if s.get('full_refresh_interval_hours', 6)==0.5 else '',
@@ -676,15 +751,11 @@ async def settings_page(request: Request):
         sel_AB_d_Y=sel_AB_d_Y,
         dim_past='checked' if dim_past else '',
         crossed_dim='checked' if crossed_dim else '',
-        show_desc='checked' if s.get('show_descriptions', True) else '',
         ts_mod=ts_mod,
-        outline_w=outline_w,
         cal_checkboxes=cal_checkboxes,
         cal_error=cal_error,
         lan_ip=lan_ip,
         port=config.APP_PORT,
-        preset_options=_PRESET_OPTIONS_HTML,
-        preset_descs=_PRESET_DESCS_JSON,
     )
 
 
@@ -732,9 +803,7 @@ async def update_settings(request: Request):
         "date_format": fd.get("date_format", ""),
         "crossed_event_dim": fd.get("crossed_event_dim") == "1",
         "dim_past_events": fd.get("dim_past_events") == "1",
-        "show_descriptions": fd.get("show_descriptions") == "1",
         "text_size_modifier": int(fd.get("text_size_modifier", 0)),
-        "text_outline_width": max(0, min(10, int(fd.get("text_outline_width", 5)))),
         "selected_calendars": fd.getlist("selected_calendars"),
     }
     logger.info("Settings updated: %s", {k: v for k, v in data.items() if k != "selected_calendars"})
@@ -753,153 +822,62 @@ async def trigger_render():
 
 # ---- Presets: curated setting combinations for common use cases ----
 _PRESETS = {
-    # ---- 7 days ----
-    "gray_soft_7d_10m": {
-        "group": "7 days", "default": True,
-        "label": "7 days \u00b7 10m soft \u00b7 1h full-clear",
-        "desc": "Grayscale with soft (no-flash) regional updates. 7-day view, time line every 10 min, full clean refresh every hour. Balanced default \u2014 your current setup.",
-        "view_mode": "7days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
-        "time_line_interval_min": 10, "full_refresh_interval_hours": 1,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+    # Soft mode, grayscale, minimal darkening, periodic full clears
+    "soft_clean": {
+        "label": "Soft · Clean",
+        "desc": "Grayscale, no flash, periodic full clear. Slight darkening over time, auto-cleared.",
+        "update_mode": "soft", "bw_mode": False, "dim_style": "normal",
+        "refresh_border_mm": 5, "time_line_interval_min": 5,
+        "full_refresh_interval_hours": 2, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    "gray_soft_7d_live": {
-        "group": "7 days",
-        "label": "7 days \u00b7 1m soft live \u00b7 30m full-clear",
-        "desc": "Grayscale soft with a 1-minute live time line. Frequent full clears (every 30 min) fight the slow darkening from live updates.",
-        "view_mode": "7days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
-        "time_line_interval_min": 1, "full_refresh_interval_hours": 0.5,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+    # Soft mode, 1-min time-line for live updates
+    "soft_live": {
+        "label": "Soft · Live (1-min)",
+        "desc": "Grayscale soft with 1-min time-line. Live updates, periodic full clear to fight darkening.",
+        "update_mode": "soft", "bw_mode": False, "dim_style": "normal",
+        "refresh_border_mm": 5, "time_line_interval_min": 1,
+        "full_refresh_interval_hours": 1, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    "bw_check_7d_live": {
-        "group": "7 days",
-        "label": "7 days \u00b7 b/w DU \u00b7 1m live (checkerboard)",
-        "desc": "1-bit black/white with DU updates \u2014 zero ghosting, never darkens. 1-minute live time line; dimmed events use a checkerboard fill.",
-        "view_mode": "7days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
-        "time_line_interval_min": 1, "full_refresh_interval_hours": 6,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
-        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
-        "full_refresh_interval": 1, "full_refresh_event_end": 1,
-        "full_refresh_manual": 1, "regional_hard_flashes": 1,
-    },
-    "bw_check_7d_5m": {
-        "group": "7 days",
-        "label": "7 days \u00b7 b/w DU \u00b7 5m (checkerboard)",
-        "desc": "1-bit B/W DU, 7-day view, time line every 5 min, checkerboard dim. Crisp with almost no full clears (every 12 h).",
-        "view_mode": "7days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
-        "time_line_interval_min": 5, "full_refresh_interval_hours": 12,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
-        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
-        "full_refresh_interval": 1, "full_refresh_event_end": 1,
-        "full_refresh_manual": 1, "regional_hard_flashes": 1,
-    },
-    # ---- 5 days ----
-    "gray_soft_5d_10m": {
-        "group": "5 days",
-        "label": "5 days \u00b7 10m soft \u00b7 1h full-clear",
-        "desc": "Grayscale with soft (no-flash) regional updates. 5-day view with larger fonts, time line every 10 min, full clean refresh every hour.",
-        "view_mode": "5days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
-        "time_line_interval_min": 10, "full_refresh_interval_hours": 1,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
-        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
-        "full_refresh_interval": 1, "full_refresh_event_end": 1,
-        "full_refresh_manual": 1, "regional_hard_flashes": 1,
-    },
-    "bw_check_5d_live": {
-        "group": "5 days",
-        "label": "5 days \u00b7 b/w DU \u00b7 1m live (checkerboard)",
-        "desc": "1-bit black/white with DU updates \u2014 zero ghosting, never darkens. 5-day view with larger fonts, 1-minute live time line, checkerboard dim.",
-        "view_mode": "5days", "bw_mode": True, "update_mode": "du", "dim_style": "checkerboard",
-        "time_line_interval_min": 1, "full_refresh_interval_hours": 6,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
-        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
-        "full_refresh_interval": 1, "full_refresh_event_end": 1,
-        "full_refresh_manual": 1, "regional_hard_flashes": 1,
-    },
-    # ---- Week ----
-    "gray_hard_week_15m": {
-        "group": "Week",
-        "label": "Week \u00b7 15m hard flash \u00b7 2h full-clear",
-        "desc": "Grayscale with a brief flash on each change (less residual darkening). Week view, time line every 15 min, full clear every 2 h.",
-        "view_mode": "week", "bw_mode": False, "update_mode": "hard", "dim_style": "normal",
-        "time_line_interval_min": 15, "full_refresh_interval_hours": 2,
-        "refresh_border_mm": 2, "fullscreen_on_dim": True,
+    # Hard mode, grayscale, flash on each change, thorough clears
+    "hard_clean": {
+        "label": "Hard · Clean",
+        "desc": "Grayscale with flash on each change. Minimal darkening, thorough clears.",
+        "update_mode": "hard", "bw_mode": False, "dim_style": "normal",
+        "refresh_border_mm": 2, "time_line_interval_min": 5,
+        "full_refresh_interval_hours": 3, "fullscreen_on_dim": True,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 2, "full_refresh_event_end": 2,
         "full_refresh_manual": 2, "regional_hard_flashes": 2,
     },
-    "gray_soft_week_slow": {
-        "group": "Week",
-        "label": "Week \u00b7 30m soft \u00b7 6h full-clear (low wear)",
-        "desc": "Grayscale soft, gentle on the panel: time line every 30 min, full clear only every 6 h. Fewest refreshes.",
-        "view_mode": "week", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
-        "time_line_interval_min": 30, "full_refresh_interval_hours": 6,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
-        "full_refresh_deploy": 2, "full_refresh_day_change": 2,
-        "full_refresh_interval": 1, "full_refresh_event_end": 1,
-        "full_refresh_manual": 1, "regional_hard_flashes": 1,
-    },
-    "bw_solid_week_10m": {
-        "group": "Week",
-        "label": "Week \u00b7 b/w DU \u00b7 10m (solid dim)",
-        "desc": "1-bit B/W DU, week view, time line every 10 min. Dimmed events use a solid white fill \u2014 the cleanest b/w look.",
-        "view_mode": "week", "bw_mode": True, "update_mode": "du", "dim_style": "normal",
-        "time_line_interval_min": 10, "full_refresh_interval_hours": 6,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+    # B/W DU mode — zero darkening, 1-bit, fastest updates, checkerboard dim
+    "bw_zero": {
+        "label": "B/W · Zero dirt (checkerboard)",
+        "desc": "1-bit B/W with DU updates, checkerboard dim. Zero ghosting, fastest refresh.",
+        "update_mode": "du", "bw_mode": True, "dim_style": "checkerboard",
+        "refresh_border_mm": 5, "time_line_interval_min": 1,
+        "full_refresh_interval_hours": 6, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
-    # ---- Month & 35 days ----
-    "gray_35d_daily": {
-        "group": "Month & 35 days",
-        "label": "35 days \u00b7 daily full-clear",
-        "desc": "5-week grid (35 days, Monday-start) \u2014 the closest to a 30-day overview. Grayscale soft; a full clean refresh once a day keeps it pristine.",
-        "view_mode": "35days", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
-        "time_line_interval_min": 30, "full_refresh_interval_hours": 24,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
-        "full_refresh_deploy": 3, "full_refresh_day_change": 2,
-        "full_refresh_interval": 1, "full_refresh_event_end": 1,
-        "full_refresh_manual": 1, "regional_hard_flashes": 1,
-    },
-    "gray_month_daily": {
-        "group": "Month & 35 days",
-        "label": "Month \u00b7 daily full-clear",
-        "desc": "Month grid (no time line). Grayscale soft; a full clean refresh once a day keeps it pristine.",
-        "view_mode": "month", "bw_mode": False, "update_mode": "soft", "dim_style": "normal",
-        "time_line_interval_min": 30, "full_refresh_interval_hours": 24,
-        "refresh_border_mm": 5, "fullscreen_on_dim": False,
+    # B/W DU mode — zero darkening, solid dim (white fill + black border)
+    "bw_solid": {
+        "label": "B/W · Zero dirt (solid dim)",
+        "desc": "1-bit B/W with DU updates, solid white dim. Zero ghosting, cleanest look.",
+        "update_mode": "du", "bw_mode": True, "dim_style": "normal",
+        "refresh_border_mm": 5, "time_line_interval_min": 1,
+        "full_refresh_interval_hours": 6, "fullscreen_on_dim": False,
         "full_refresh_deploy": 3, "full_refresh_day_change": 2,
         "full_refresh_interval": 1, "full_refresh_event_end": 1,
         "full_refresh_manual": 1, "regional_hard_flashes": 1,
     },
 }
-
-# Preset <optgroup>/<option> list and description map, generated from _PRESETS.
-import json as _json
-def _build_preset_options():
-    groups, order = {}, []
-    for k, p in _PRESETS.items():
-        g = p.get("group", "Presets")
-        if g not in groups:
-            groups[g] = []
-            order.append(g)
-        groups[g].append((k, p))
-    out = []
-    for g in order:
-        out.append('<optgroup label="%s">' % g)
-        for k, p in groups[g]:
-            sel = " selected" if p.get("default") else ""
-            out.append('<option value="%s"%s>%s</option>' % (k, sel, p["label"]))
-        out.append("</optgroup>")
-    return "".join(out)
-_PRESET_OPTIONS_HTML = _build_preset_options()
-_PRESET_DESCS_JSON = _json.dumps({k: p["desc"] for k, p in _PRESETS.items()}, ensure_ascii=False)
 
 
 @app.get("/api/preset/{name}")
@@ -921,8 +899,7 @@ def _safe_render():
     repeats = max(1, int(settings.get("full_refresh_manual", 1)))
     logger.info("Manual render triggered (full hard refresh, %dx)", repeats)
     try:
-        ok = do_render(force=True, force_full=True, full_refresh_repeats=repeats,
-                       hard_clear=True)
+        ok = do_render(force=True, force_full=True, full_refresh_repeats=repeats)
         logger.info("Manual render completed: %s", ok)
     except Exception as e:
         logger.error("Manual render failed: %s", e)
@@ -1092,9 +1069,8 @@ async function connect() {{
     }});
     const data = await r.json();
     if (data.ok) {{
-      status.innerHTML = '✓ Connecting to <b>' + ssid + '</b>…<br>' +
-        'The setup hotspot will now turn off. Reconnect your phone to your ' +
-        'home WiFi, then look at the display for the new address to open.';
+      status.textContent = '✓ Connected! The hotspot will turn off. Page will reload in 10s...';
+      setTimeout(() => location.reload(), 10000);
     }} else {{
       status.textContent = '✗ ' + (data.error || 'Connection failed');
     }}
@@ -1123,32 +1099,40 @@ async def wifi_scan():
 
 @app.post("/api/wifi-connect")
 async def wifi_connect(request: Request):
-    """Connect to a WiFi network via NetworkManager.
-
-    The switchover is done in a background thread so this HTTP response can
-    flush BEFORE the hotspot is torn down (tearing it down drops the client's
-    connection). The client is told to reconnect to their home WiFi and read
-    the new address off the display, which re-renders once connectivity is
-    restored.
-    """
+    """Connect to a WiFi network."""
     data = await request.json()
     ssid = data.get("ssid", "").strip()
     password = data.get("password", "")
     if not ssid:
         return JSONResponse({"ok": False, "error": "SSID is required"}, status_code=400)
+    try:
+        # Stop hotspot first
+        wifi_setup.stop_hotspot()
+        # Write wpa_supplicant config
+        import subprocess
+        if password:
+            subprocess.run(
+                ["wpa_passphrase", ssid, password],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+        # Configure network
+        conf = f'''ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+country=RU
 
-    import time
-
-    def _switch():
-        time.sleep(1)  # let the JSON response flush to the client first
-        ok, err = wifi_setup.connect_wifi(ssid, password)
-        if ok and wifi_setup.is_online():
-            wifi_setup.notify_restored()
-        elif not ok:
-            logger.error("WiFi connect failed: %s", err)
-
-    threading.Thread(target=_switch, daemon=True).start()
-    return {"ok": True, "ssid": ssid}
+network={{
+    ssid="{ssid}"
+    {"psk=\"" + password + "\"" if password else "key_mgmt=NONE"}
+}}
+'''
+        Path("/etc/wpa_supplicant/wpa_supplicant.conf").write_text(conf)
+        subprocess.run(["wpa_cli", "-i", wifi_setup.HOTSPOT_IFACE, "reconfigure"],
+                       capture_output=True, timeout=10)
+        logger.info("WiFi configured: SSID=%s", ssid)
+        return {"ok": True, "ssid": ssid}
+    except Exception as e:
+        logger.error("WiFi connect failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # ---- Google OAuth routes ----
@@ -1233,13 +1217,9 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 header {{ text-align: center; margin-bottom: 24px; }}
 header h1 {{ font-size: 1.6em; margin-bottom: 4px; }}
 header p {{ color: var(--muted); font-size: 0.85em; }}
-/* Masonry-style flow: as many ~300px columns as fit — 1 on phones, 2–3 on
-   wider screens. Cards of different heights pack without leaving grid gaps. */
-.settings-grid {{ columns: 300px; column-gap: 16px; }}
-.settings-grid > .card {{ break-inside: avoid; -webkit-column-break-inside: avoid;
-  margin: 0 0 16px; }}
-/* Google Account pinned at top, full width */
-.top-row {{ margin-bottom: 16px; }}
+.settings-grid {{ display: grid; grid-template-columns: 1fr; gap: 16px; }}
+@media (min-width: 700px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr; }} }}
+@media (min-width: 1000px) {{ .settings-grid {{ grid-template-columns: 1fr 1fr 1fr; }} }}
 .card {{ background: var(--card); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }}
 .card h2 {{ font-size: 1.05em; margin-bottom: 14px; color: var(--accent); display: flex; align-items: center; gap: 8px; }}
 .card h3 {{ font-size: 0.72em; margin: 18px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600; }}
@@ -1277,14 +1257,6 @@ input[type="range"] {{ width: 100%; }}
 .note {{ font-size: 0.74em; color: var(--muted); margin-top: 4px; }}
 .range-val {{ display: inline-block; background: var(--input); padding: 2px 8px; border-radius: 6px; font-size: 0.8em; font-weight: 600; }}
 .save-bar {{ position: sticky; bottom: 0; margin: 20px -20px 0; padding: 16px 20px; background: linear-gradient(180deg, transparent, var(--bg) 30%); }}
-/* Tabs */
-.tabs {{ display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid var(--border); }}
-.tab-btn {{ padding: 12px 20px; border: none; background: none; color: var(--muted); cursor: pointer;
-  font-size: 0.95em; font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all .15s; }}
-.tab-btn:hover {{ color: var(--text); }}
-.tab-btn.active {{ color: var(--accent); border-bottom-color: var(--accent); }}
-.tab-panel {{ display: none; }}
-.tab-panel.active {{ display: block; }}
 </style>
 </head>
 <body>
@@ -1295,34 +1267,32 @@ input[type="range"] {{ width: 100%; }}
 {saved_html}
 
 <form id="settingsForm" action="/api/settings" method="POST">
-<div class="top-row">
-  <div class="card">
+<div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+  <div class="card" style="flex:1;min-width:300px">
     <h2>🔐 Google Account</h2>
     {auth_section}
   </div>
-</div>
-
-<div class="tabs">
-  <button type="button" class="tab-btn active" onclick="switchTab(0)">📅 Calendar</button>
-  <button type="button" class="tab-btn" onclick="switchTab(1)">🎨 Appearance</button>
-  <button type="button" class="tab-btn" onclick="switchTab(2)">🔧 Advanced</button>
-</div>
-
-<!-- Tab 0: Calendar -->
-<div class="tab-panel active" id="tab0">
-<div class="settings-grid">
-
-  <div class="card">
-    <h2>🗓 Calendars</h2>
-    <div class="cal-grid">
-    {cal_checkboxes}
+  <div class="card" style="flex:1;min-width:240px;max-width:400px">
+    <h2>⚡ Presets</h2>
+    <div class="field">
+      <label>Choose a preset</label>
+      <select id="presetSelect" onchange="applyPreset()">
+        <option value="">— Select —</option>
+        <option value="soft_clean">Soft · Clean</option>
+        <option value="soft_live">Soft · Live (1-min)</option>
+        <option value="hard_clean">Hard · Clean</option>
+        <option value="bw_zero">B/W · Zero dirt (checkerboard)</option>
+        <option value="bw_solid">B/W · Zero dirt (solid dim)</option>
+      </select>
+      <div class="note" id="presetDesc" style="margin-top:6px"></div>
     </div>
-    {cal_error}
-    <p class="note">Leave all unchecked to show every calendar.</p>
   </div>
+</div>
 
+<div class="settings-grid">
   <div class="card">
-    <h2>📅 View</h2>
+    <h2>📅 Calendar &amp; Events</h2>
+    <h3>Layout</h3>
     <div class="field">
       <label>View Mode</label>
       <select name="view_mode">
@@ -1330,7 +1300,6 @@ input[type="range"] {{ width: 100%; }}
         <option value="35days" {sel_35days}>Month (5 weeks, Mon-start)</option>
         <option value="week" {sel_week}>Week (Mon–Sun)</option>
         <option value="7days" {sel_7days}>7 Days (from today)</option>
-        <option value="5days" {sel_5days}>5 Days (from today)</option>
       </select>
     </div>
     <div class="field">
@@ -1342,11 +1311,27 @@ input[type="range"] {{ width: 100%; }}
         <option value="3" {sel_fd_3}>3</option>
       </select>
     </div>
+    <h3>Calendars to show</h3>
+    <div class="cal-grid">
+    {cal_checkboxes}
+    </div>
+    {cal_error}
+    <p class="note">Leave all unchecked to show every calendar.</p>
+    <h3>Checking for changes</h3>
+    <div class="field">
+      <label>Check for new events every (seconds)</label>
+      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
+      <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
+    </div>
+    <h3>Look &amp; feel</h3>
     <label class="check-row">
-      <input type="checkbox" name="show_descriptions" value="1" {show_desc}>
-      <span>Show event location &amp; description on cards</span>
+      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
+      <span>Dim past days &amp; ended events</span>
     </label>
-    <p class="note">Location (prefixed “@”) and description under the title/time, when the event has them and there's room.</p>
+    <label class="check-row">
+      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
+      <span>Dim an event once the time line passes it</span>
+    </label>
   </div>
 
   <div class="card">
@@ -1387,112 +1372,37 @@ input[type="range"] {{ width: 100%; }}
       <input type="text" name="timezone" value="{timezone}" placeholder="Auto-detected from your IP">
       <div class="note">City name (e.g. Europe/Moscow) or UTC offset (e.g. +3).</div>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>⏱ Current-time line</h2>
-    <label class="check-row">
-      <input type="checkbox" name="show_time_line" value="1" {show_time_line}>
-      <span>Show current-time line</span>
-    </label>
+    <h3>Live time line</h3>
     <div class="field">
       <label>Move the time line every</label>
       <select name="time_line_interval_min" id="tlInterval" onchange="updateTlWarning()">
-        <option value="1" {sel_tl_1}>1 minute · every 1/60 h</option>
-        <option value="2" {sel_tl_2}>2 minutes · 1/30 h</option>
-        <option value="5" {sel_tl_5}>5 minutes · 1/12 h</option>
-        <option value="10" {sel_tl_10}>10 minutes · 1/6 h</option>
-        <option value="15" {sel_tl_15}>15 minutes · 1/4 h</option>
-        <option value="20" {sel_tl_20}>20 minutes · 1/3 h</option>
-        <option value="30" {sel_tl_30}>30 minutes · 1/2 h</option>
+        <option value="1" {sel_tl_1}>1 minute</option>
+        <option value="5" {sel_tl_5}>5 minutes</option>
+        <option value="10" {sel_tl_10}>10 minutes</option>
+        <option value="15" {sel_tl_15}>15 minutes</option>
+        <option value="30" {sel_tl_30}>30 minutes</option>
+        <option value="60" {sel_tl_60}>1 hour</option>
       </select>
-      <div class="note">Only used in Week, 7-day &amp; 5-day views. Each tick is a small regional refresh.</div>
+      <div class="note">Only used in Week &amp; 7-day views. Each tick is a small regional refresh.</div>
       <div class="note" id="tlWarning" style="display:none;color:#f59e0b;margin-top:4px">⚠️ Intervals under 30 minutes cause frequent regional updates that can slowly darken the screen over time. Use a full-screen clean refresh periodically to clear this.</div>
-    </div>
-    <div class="field">
-      <label>Time-line style</label>
-      <select name="time_line_style">
-        <option value="solid" {sel_tl_style_solid}>Solid thick line</option>
-        <option value="dotted" {sel_tl_style_dotted}>Dotted (default)</option>
-        <option value="wavy" {sel_tl_style_wavy}>Wavy</option>
-      </select>
     </div>
   </div>
 
-</div>
-</div>
-
-<!-- Tab 1: Appearance -->
-<div class="tab-panel" id="tab1">
-<div class="settings-grid">
-
   <div class="card">
-    <h2>🎨 Appearance</h2>
+    <h2>🖥 Screen &amp; Refresh</h2>
+    <h3>Appearance</h3>
     <div class="row">
-      <div class="field"><label>Brightness</label>
+      <div class="field"><label>Contrast / brightness</label>
         <input type="range" name="brightness" min="0.1" max="2.0" step="0.1" value="{brightness}"
                oninput="document.getElementById('brightVal').textContent=this.value">
         <div class="note" style="text-align:center"><span class="range-val" id="brightVal">{brightness}</span></div>
       </div>
       <div class="field"><label>Text size</label>
-        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8">
+        <input type="number" name="text_size_modifier" value="{ts_mod}" step="1" min="-8" max="8" style="width:80px">
         <div class="note">+ bigger, − smaller (px)</div>
       </div>
-      <div class="field"><label>Text outline width</label>
-        <input type="range" name="text_outline_width" min="0" max="10" step="1" value="{outline_w}"
-               oninput="document.getElementById('outlineVal').textContent=this.value">
-        <div class="note" style="text-align:center">White outline around text in colored event cards (<span class="range-val" id="outlineVal">{outline_w}</span> px, 0 = off)</div>
-      </div>
     </div>
-    <label class="check-row">
-      <input type="checkbox" name="bw_mode" value="1" {bw_mode}>
-      <span>B/W mode (1-bit black/white — crisp, never darkens; pairs with DU updates)</span>
-    </label>
-    <h3>Dimming</h3>
-    <label class="check-row">
-      <input type="checkbox" name="dim_past_events" value="1" {dim_past}>
-      <span>Dim past days &amp; ended events</span>
-    </label>
-    <label class="check-row">
-      <input type="checkbox" name="crossed_event_dim" value="1" {crossed_dim}>
-      <span>Dim an event once the time line passes it</span>
-    </label>
-    <div class="field">
-      <label>Dimmed event style (b/w mode)</label>
-      <select name="dim_style">
-        <option value="normal" {sel_ds_normal}>White fill + black border</option>
-        <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>� Preview</h2>
-    <a href="/preview" class="btn btn-small" style="display:block;text-align:center">View the screen live</a>
-    <p class="note" style="margin-top:8px">See exactly what's on the e-ink from your browser.</p>
-  </div>
-
-</div>
-</div>
-
-<!-- Tab 2: Advanced -->
-<div class="tab-panel" id="tab2">
-<div class="settings-grid">
-
-  <div class="card">
-    <h2>⚡ Presets</h2>
-    <div class="field">
-      <label>Preset (defaults to your current setup)</label>
-      <select id="presetSelect2" onchange="applyPreset2()">
-        {preset_options}
-      </select>
-      <div class="note" id="presetDesc2" style="margin-top:6px"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>�🔧 Screen updates</h2>
-    <p class="note" style="margin-top:-8px;margin-bottom:12px">Advanced — most people can just use a Preset.</p>
+    <h3>Regional updates</h3>
     <div class="field">
       <label>Update style for small changes (time line, etc.)</label>
       <select name="update_mode">
@@ -1500,7 +1410,18 @@ input[type="range"] {{ width: 100%; }}
         <option value="hard" {sel_um_hard}>Hard · brief flash of the changed area</option>
         <option value="du" {sel_um_du}>DU · 1-bit, no flash, zero darkening (requires b/w mode)</option>
       </select>
-      <div class="note">Soft uses GL16 which accumulates ghosting — use periodic full refreshes to clear. DU fully drives e-ink particles with no ghosting — enable b/w mode for best results.</div>
+      <div class="note">Soft uses GL16 which accumulates ghosting — use periodic full refreshes to clear. DU fully drives e-ink particles with no ghosting — enable b/w mode below for best results.</div>
+    </div>
+    <label class="check-row">
+      <input type="checkbox" name="bw_mode" value="1" {bw_mode}>
+      <span>B/W mode (1-bit black/white — eliminates darkening, use with DU updates)</span>
+    </label>
+    <div class="field">
+      <label>Dimmed event style (b/w mode)</label>
+      <select name="dim_style">
+        <option value="normal" {sel_ds_normal}>White fill + black border</option>
+        <option value="checkerboard" {sel_ds_checker}>Checkerboard (1px B/W pattern, black text with white outline)</option>
+      </select>
     </div>
     <div class="field">
       <label>Partial refresh area expansion</label>
@@ -1512,28 +1433,8 @@ input[type="range"] {{ width: 100%; }}
         <option value="15" {sel_db_15}>15 mm · ~178 px</option>
         <option value="20" {sel_db_20}>20 mm · ~237 px</option>
       </select>
-      <div class="note">Expands the refreshed region by this much on each side. Only the inner changed area visibly updates.</div>
+      <div class="note">Expands the refreshed region by this much on each side. The border keeps the old content, so only the inner changed area visibly updates. Wider = more margin around the change.</div>
     </div>
-    <div class="field">
-      <label>Regional hard flashes</label>
-      <select name="regional_hard_flashes">
-        <option value="1" {sel_rhf_1}>1</option><option value="2" {sel_rhf_2}>2</option>
-        <option value="3" {sel_rhf_3}>3</option><option value="4" {sel_rhf_4}>4</option>
-        <option value="5" {sel_rhf_5}>5</option>
-      </select>
-      <div class="note">Flash+draw cycles when regional hard mode is active.</div>
-    </div>
-    <h3>Syncing</h3>
-    <div class="field">
-      <label>Check Google for new events every (seconds)</label>
-      <input type="number" name="event_poll_interval_sec" value="{poll_interval}" min="10" max="600">
-      <div class="note">Lower = catches new/ended events sooner, more battery/CPU use.</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>♻️ Full-screen refresh</h2>
-    <p class="note" style="margin-top:-8px;margin-bottom:12px">Advanced — clears ghosting by wiping the whole screen.</p>
     <div class="field">
       <label>Full-screen clean refresh</label>
       <select name="full_refresh_interval_hours">
@@ -1553,16 +1454,18 @@ input[type="range"] {{ width: 100%; }}
       <input type="checkbox" name="fullscreen_on_dim" value="1" {fullscreen_on_dim}>
       <span>Full-screen refresh when an event ends (clears dimming ghosting)</span>
     </label>
-    <h3>Clean-refresh passes</h3>
+    <h3>Hard refresh passes</h3>
     <div class="row">
-      <div class="field"><label>Startup / deploy</label>
+      <div class="field">
+        <label>Startup / deploy</label>
         <select name="full_refresh_deploy">
           <option value="1" {sel_frd_1}>1</option><option value="2" {sel_frd_2}>2</option>
           <option value="3" {sel_frd_3}>3</option><option value="4" {sel_frd_4}>4</option>
           <option value="5" {sel_frd_5}>5</option>
         </select>
       </div>
-      <div class="field"><label>Day change</label>
+      <div class="field">
+        <label>Day change</label>
         <select name="full_refresh_day_change">
           <option value="1" {sel_frdc_1}>1</option><option value="2" {sel_frdc_2}>2</option>
           <option value="3" {sel_frdc_3}>3</option><option value="4" {sel_frdc_4}>4</option>
@@ -1571,14 +1474,16 @@ input[type="range"] {{ width: 100%; }}
       </div>
     </div>
     <div class="row">
-      <div class="field"><label>Interval</label>
+      <div class="field">
+        <label>Interval</label>
         <select name="full_refresh_interval">
           <option value="1" {sel_fri_1}>1</option><option value="2" {sel_fri_2}>2</option>
           <option value="3" {sel_fri_3}>3</option><option value="4" {sel_fri_4}>4</option>
           <option value="5" {sel_fri_5}>5</option>
         </select>
       </div>
-      <div class="field"><label>Event end / dimming</label>
+      <div class="field">
+        <label>Event end / dimming</label>
         <select name="full_refresh_event_end">
           <option value="1" {sel_free_1}>1</option><option value="2" {sel_free_2}>2</option>
           <option value="3" {sel_free_3}>3</option><option value="4" {sel_free_4}>4</option>
@@ -1586,17 +1491,40 @@ input[type="range"] {{ width: 100%; }}
         </select>
       </div>
     </div>
+    <div class="row">
+      <div class="field">
+        <label>Save &amp; Render (manual)</label>
+        <select name="full_refresh_manual">
+          <option value="1" {sel_frm_1}>1</option><option value="2" {sel_frm_2}>2</option>
+          <option value="3" {sel_frm_3}>3</option><option value="4" {sel_frm_4}>4</option>
+          <option value="5" {sel_frm_5}>5</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Regional hard flashes</label>
+        <select name="regional_hard_flashes">
+          <option value="1" {sel_rhf_1}>1</option><option value="2" {sel_rhf_2}>2</option>
+          <option value="3" {sel_rhf_3}>3</option><option value="4" {sel_rhf_4}>4</option>
+          <option value="5" {sel_rhf_5}>5</option>
+        </select>
+        <div class="note">Flash+draw cycles when regional hard mode is active.</div>
+      </div>
+    </div>
+    <h3>Time line</h3>
+    <label class="check-row">
+      <input type="checkbox" name="show_time_line" value="1" {show_time_line}>
+      <span>Show current-time line</span>
+    </label>
     <div class="field">
-      <label>Save &amp; Render (manual)</label>
-      <select name="full_refresh_manual">
-        <option value="1" {sel_frm_1}>1</option><option value="2" {sel_frm_2}>2</option>
-        <option value="3" {sel_frm_3}>3</option><option value="4" {sel_frm_4}>4</option>
-        <option value="5" {sel_frm_5}>5</option>
+      <label>Time-line style</label>
+      <select name="time_line_style">
+        <option value="solid" {sel_tl_style_solid}>Solid thick line</option>
+        <option value="dotted" {sel_tl_style_dotted}>Dotted (default)</option>
+        <option value="wavy" {sel_tl_style_wavy}>Wavy</option>
       </select>
     </div>
+    <a href="/preview" class="btn btn-small" style="display:block;text-align:center;margin-top:10px">🖼 Preview the screen live</a>
   </div>
-
-</div>
 </div>
 
 <div class="save-bar">
@@ -1610,34 +1538,16 @@ input[type="range"] {{ width: 100%; }}
 </div>
 
 <script>
-var _presetDescs = {preset_descs};
-function switchTab(n) {{
-  document.querySelectorAll('.tab-btn').forEach(function(b, i) {{
-    b.classList.toggle('active', i === n);
-  }});
-  document.querySelectorAll('.tab-panel').forEach(function(p, i) {{
-    p.classList.toggle('active', i === n);
-  }});
-}}
+var _presetDescs = {{
+  soft_clean: 'Grayscale, no flash, periodic full clear. Slight darkening over time, auto-cleared.',
+  soft_live: 'Grayscale soft with 1-min time-line. Live updates, periodic full clear to fight darkening.',
+  hard_clean: 'Grayscale with flash on each change. Minimal darkening, thorough clears.',
+  bw_zero: '1-bit B/W with DU updates, checkerboard dim. Zero ghosting, fastest refresh.',
+  bw_solid: '1-bit B/W with DU updates, solid white dim. Zero ghosting, cleanest look.'
+}};
 function applyPreset() {{
   var sel = document.getElementById('presetSelect');
   var desc = document.getElementById('presetDesc');
-  var val = sel.value;
-  if (val && _presetDescs[val]) {{
-    desc.textContent = _presetDescs[val];
-    if (confirm('Apply this preset? This overwrites your refresh settings.')) {{
-      location.href = '/api/preset/' + val;
-    }} else {{
-      sel.value = '';
-      desc.textContent = '';
-    }}
-  }} else {{
-    desc.textContent = '';
-  }}
-}}
-function applyPreset2() {{
-  var sel = document.getElementById('presetSelect2');
-  var desc = document.getElementById('presetDesc2');
   var val = sel.value;
   if (val && _presetDescs[val]) {{
     desc.textContent = _presetDescs[val];

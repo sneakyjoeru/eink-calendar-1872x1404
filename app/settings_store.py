@@ -7,7 +7,7 @@ from typing import Optional
 from . import config
 
 _DEFAULTS = {
-    "view_mode": "week",          # "month" | "35days" | "week" | "7days" | "5days"
+    "view_mode": "week",          # "month" | "35days" | "week" | "7days"
     "day_start": "07:00",         # HH:MM
     "day_end": "23:00",           # HH:MM
     "max_full_day_events": 3,     # 1-3
@@ -34,9 +34,7 @@ _DEFAULTS = {
     "date_format": "",            # strftime format: "" | "%B %Y" | "%B %d, %Y" | "%Y.%m.%d %a" | "%d %B %Y"
     "dim_past_events": False,     # dim past events on the display
     "crossed_event_dim": False,   # dim events when time line crosses them
-    "show_descriptions": True,    # show event descriptions under the title/time on cards
     "text_size_modifier": 0,      # global font size adjustment (+/- pixels)
-    "text_outline_width": 5,      # white text outline width in px for colored event boxes (0 = off, max 10)
 }
 
 _lock = threading.RLock()

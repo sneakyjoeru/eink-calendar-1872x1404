@@ -26,6 +26,10 @@ Thumbs.db
 tmp_render/
 *.tmp.png
 
+# Debug/inspection scripts
+tmp_*.py
+tmp_*.png
+
 # SSH keys (symlink to shared /distr-fun/.ssh/)
 .ssh/
 .ssh

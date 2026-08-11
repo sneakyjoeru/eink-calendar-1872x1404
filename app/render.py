@@ -1360,24 +1360,57 @@ def _wrap_text_lines(draw, text, font, max_w):
 
 
 def _fit_fd_text(draw, text, font, max_w):
-    """Wrap text to fit max_w, return first line with '…' if truncated.
+    """Fit text to one line of max_w, greedily filling with syllable fragments.
 
-    Uses _wrap_text_lines (word + syllable hyphenation) so as much of the
-    title as possible is shown in the single-line all-day bar.
+    Uses _wrap_text_lines (word + syllable hyphenation) for the first pass,
+    then tries to append characters from the next word (with a hyphen) so
+    as much of the title as possible is shown. Appends '…' if truncated.
     """
     if not text:
         return ""
-    wrapped = _wrap_text_lines(draw, text, font, max_w)
+    full = text.strip()
+    if _text_w(draw, full, font) <= max_w:
+        return full
+    wrapped = _wrap_text_lines(draw, full, font, max_w)
     if not wrapped:
-        return text[:14] + "…"
+        return full[:14] + "…"
     display = wrapped[0]
-    if len(wrapped) > 1:
-        # Indicate truncation with ellipsis
+    if len(wrapped) == 1:
+        return display
+    # There is more text — greedily append chars from the next word with a
+    # hyphen so the line shows as much info as possible.  We reserve room
+    # for the ellipsis upfront so the final string never overflows.
+    ELLIPSIS_W = _text_w(draw, "…", font)
+    avail = max_w - ELLIPSIS_W
+    next_word = wrapped[1].lstrip()
+    if display.endswith("-"):
+        display = display[:-1]  # drop trailing hyphen, we'll re-add
+    # Try fitting display + hyphen + chars from next_word (without ellipsis)
+    while next_word and _text_w(draw, display + "-" + next_word[0], font) <= avail:
+        display += "-" + next_word[0]
+        next_word = next_word[1:]
+    if not next_word:
+        # Consumed the entire next word — check if there are more lines
+        if len(wrapped) > 2:
+            # Make sure ellipsis fits
+            while display and _text_w(draw, display + "…", font) > max_w:
+                if display.endswith("-"):
+                    display = display[:-1]
+                else:
+                    display = display[:-1]
+                    if display.endswith("-"):
+                        display = display[:-1]
+            display += "…"
+        return display
+    # Trim display back so display + ellipsis fits in max_w
+    while display and _text_w(draw, display + "…", font) > max_w:
         if display.endswith("-"):
-            display = display[:-1]  # replace hyphen with ellipsis
-        while _text_w(draw, display + "…", font) > max_w and len(display) > 1:
             display = display[:-1]
-        display += "…"
+        else:
+            display = display[:-1]
+            if display.endswith("-"):
+                display = display[:-1]
+    display += "…"
     return display
 
 

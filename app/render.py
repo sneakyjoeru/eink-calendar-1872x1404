@@ -1386,6 +1386,10 @@ def _fit_fd_text(draw, text, font, max_w):
     next_word = wrapped[1].lstrip()
     if display.endswith("-"):
         display = display[:-1]  # drop trailing hyphen from wrapping
+    # Add a space before the first char from the next word
+    if next_word and _text_w(draw, display + " " + next_word[0], font) <= avail:
+        display += " " + next_word[0]
+        next_word = next_word[1:]
     while next_word and _text_w(draw, display + next_word[0], font) <= avail:
         display += next_word[0]
         next_word = next_word[1:]

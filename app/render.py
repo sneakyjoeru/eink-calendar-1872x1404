@@ -512,10 +512,13 @@ def _render_month(draw, events, now, max_full_day, date_format="", dim_past_even
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
 
-            # Events for this day (wrap by syllables, fill cell as space permits)
+            # Events for this day — sort all-day events by span (longer first)
+            # so multi-day all-day events appear above shorter ones in each cell.
             day_events = events_by_date.get(day_num, [])
             cell_avail_w = col_w - 16
             visible_events = [ev for ev in day_events if ev.get("summary", "") not in ("", "(No title)")]
+            visible_events.sort(key=lambda e: (-_all_day_span_days(e) if e.get("all_day") else 0,
+                                               str(e["start"])))
             ey = y + 48
             ev_fill = GRAY_DIM if (dim_past_events and day_num < today) else GRAY_DARK
             ev_idx = 0
@@ -693,10 +696,13 @@ def _render_35days(draw, events, now, max_full_day, date_format="", dim_past_eve
             else:
                 draw.text((x + 10, y + 6), day_str, fill=color, font=cell_font)
 
-            # Events for this day (wrap by syllables, fill cell as space permits)
+            # Events for this day — sort all-day events by span (longer first)
+            # so multi-day all-day events appear above shorter ones in each cell.
             day_events = events_by_date.get(day_num, [])
             cell_avail_w = col_w - 16
             visible_events = [ev for ev in day_events if ev.get("summary", "") not in ("", "(No title)")]
+            visible_events.sort(key=lambda e: (-_all_day_span_days(e) if e.get("all_day") else 0,
+                                               str(e["start"])))
             ey = y + 48
             ev_fill = GRAY_DIM if (dim_past_events and day_num < today) else GRAY_DARK
             ev_idx = 0
@@ -1241,8 +1247,9 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
         col_end = date_to_col[vis_end]
         fd_spans.append((ev, col_start, col_end))
 
-    # Sort by start column, then by span length (longer first so they get lower row slots)
-    fd_spans.sort(key=lambda s: (s[1], -(s[2] - s[1])))
+    # Sort by span length (longer first so they get higher row slots), then by
+    # start column — so longer all-day events are displayed above shorter ones.
+    fd_spans.sort(key=lambda s: (-(s[2] - s[1]), s[1]))
 
     # Assign row slots greedily — each event needs the same row across all its columns.
     # row_occupied[row] = set of columns already taken
@@ -1354,6 +1361,19 @@ def _wrap_text_lines(draw, text, font, max_w):
     if current:
         lines.append(current)
     return lines
+
+
+def _all_day_span_days(ev: dict) -> int:
+    """Number of days an all-day event spans (1 for a single-day event)."""
+    d = ev["start"]
+    if isinstance(d, datetime.datetime):
+        d = d.date()
+    end_d = ev.get("end")
+    if isinstance(end_d, datetime.datetime):
+        end_d = end_d.date()
+    if end_d is None:
+        return 1
+    return max(1, (end_d - d).days)
 
 
 def _ev_minutes(ev: dict, now: datetime.datetime, start: bool = True) -> int:

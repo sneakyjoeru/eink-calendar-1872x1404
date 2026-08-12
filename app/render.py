@@ -964,7 +964,17 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                 all_durs = sorted([ev_infos[k][4] for k in overlap_idxs] + [duration], reverse=True)
                 rank = all_durs.index(duration)  # 0 = longest
 
-                if rank == 0:
+                # Special case: exactly 2 events with the SAME duration —
+                # render both at half width, right card overlaps the left.
+                if len(overlap_idxs) == 1 and len(all_durs) == 2 and all_durs[0] == all_durs[1]:
+                    other_idx = overlap_idxs[0]
+                    other_ev = ev_infos[other_idx][0]
+                    # Left card = earlier start; right card = later start
+                    if s_min <= ev_infos[other_idx][5]:
+                        xl, xr = x + 4, x + col_w // 2 + SHRINK  # left, extends under right
+                    else:
+                        xl, xr = x + col_w // 2 - SHRINK, x + col_w - 4  # right, on top
+                elif rank == 0:
                     # Longest event: left side, original size
                     xl, xr = x + 6, x + col_w - 6 - SHRINK
                 elif rank == 1 and len(all_durs) >= 3:
@@ -980,9 +990,11 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                 xl, xr = x + 4, x + col_w - 4
             draw_infos.append((ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min))
 
-        # Draw boxes: longest first so shorter events render ON TOP
+        # Draw boxes: longest first so shorter events render ON TOP.
+        # For equal-duration pairs, left card (earlier start) has same duration
+        # as right — tie-break by start time so left draws first (underneath).
         now_min_total = now.hour * 60 + now.minute
-        for info in sorted(draw_infos, key=lambda e: -e[4]):
+        for info in sorted(draw_infos, key=lambda e: (-e[4], e[7])):
             ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min = info
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
             is_past = dim_past_events and (d < today or (d == today and e_min <= now_min_total))

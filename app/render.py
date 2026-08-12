@@ -949,50 +949,100 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
             eh = max(ey_bot - ey_top, 18)
             ev_infos.append((ev, ey_top, ey_bot, eh, ev_end_min - ev_start_min, ev_start_min, ev_end_min))
 
-        # Calculate horizontal splits for all events — checks ALL overlaps, not just neighbors
+        # Calculate horizontal splits for overlapping events.
+        # Events whose start times are within ±15 minutes of each other are
+        # treated as "same timeline" and placed side-by-side in equal-width
+        # columns (2 events = half width each, 3 = third, 4 = quarter).
+        # Longer/shorter events that only partially overlap use the cascade
+        # layout (left = longest, right = shorter, shifted right).
+        SAME_TIME_TOLERANCE = 15  # minutes — events starting within this of each other are "same time"
         SHRINK = 6  # ~1mm at 150 DPI
-        draw_infos = []  # (ev, ey_top, ey_bot, eh, duration, xl, xr, start_min, end_min)
+        draw_infos = []  # (ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min)
+
+        # Group events into "same-timeline" clusters: events whose start times
+        # are within SAME_TIME_TOLERANCE of any other event in the cluster.
+        # Then assign each cluster a column layout (equal split).
+        clusters = []  # list of list of indices into ev_infos
+        assigned_to_cluster = [False] * len(ev_infos)
+        for idx in range(len(ev_infos)):
+            if assigned_to_cluster[idx]:
+                continue
+            # Start a new cluster with this event
+            cluster = [idx]
+            assigned_to_cluster[idx] = True
+            # Grow the cluster: any event overlapping in time AND starting
+            # within tolerance of any event already in the cluster joins it.
+            changed = True
+            while changed:
+                changed = False
+                for j in range(len(ev_infos)):
+                    if assigned_to_cluster[j]:
+                        continue
+                    # Check if j overlaps in time with any member of the cluster
+                    # AND starts within tolerance of any member
+                    for ci in cluster:
+                        if (ev_infos[j][1] < ev_infos[ci][2] and ev_infos[j][2] > ev_infos[ci][1]  # time overlap
+                                and abs(ev_infos[j][5] - ev_infos[ci][5]) <= SAME_TIME_TOLERANCE):  # start within tolerance
+                            cluster.append(j)
+                            assigned_to_cluster[j] = True
+                            changed = True
+                            break
+            clusters.append(cluster)
+
+        # Build a map: event index -> (cluster_id, position within cluster)
+        ev_cluster = {}  # idx -> (cluster_id, position)
+        cluster_starts = {}  # cluster_id -> sorted list of start mins (to determine position)
+        for cid, cluster in enumerate(clusters):
+            # Sort cluster members by start time to assign left-to-right positions
+            sorted_cluster = sorted(cluster, key=lambda ci: ev_infos[ci][5])
+            cluster_starts[cid] = sorted_cluster
+            for pos, ci in enumerate(sorted_cluster):
+                ev_cluster[ci] = (cid, pos)
+
         for idx, (ev, ey_top, ey_bot, eh, duration, s_min, e_min) in enumerate(ev_infos):
-            # Find ALL overlapping events
+            # Find ALL overlapping events (time overlap)
             overlap_idxs = []
             for j, (_, j_top, j_bot, _, _, _, _) in enumerate(ev_infos):
                 if j != idx and ey_top < j_bot and ey_bot > j_top:
                     overlap_idxs.append(j)
 
-            if overlap_idxs:
-                # Rank this event's duration among all overlapping events
-                all_durs = sorted([ev_infos[k][4] for k in overlap_idxs] + [duration], reverse=True)
-                rank = all_durs.index(duration)  # 0 = longest
-
-                # Special case: exactly 2 events with the SAME duration —
-                # render both at half width, right card overlaps the left.
-                if len(overlap_idxs) == 1 and len(all_durs) == 2 and all_durs[0] == all_durs[1]:
-                    other_idx = overlap_idxs[0]
-                    other_ev = ev_infos[other_idx][0]
-                    # Left card = earlier start; right card = later start
-                    if s_min <= ev_infos[other_idx][5]:
-                        xl, xr = x + 4, x + col_w // 2 + SHRINK  # left, extends under right
-                    else:
-                        xl, xr = x + col_w // 2 - SHRINK, x + col_w - 4  # right, on top
-                elif rank == 0:
-                    # Longest event: left side, original size
-                    xl, xr = x + 6, x + col_w - 6 - SHRINK
-                elif rank == 1 and len(all_durs) >= 3:
-                    # Middle event (3-way overlap): medium shrink
-                    xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
-                elif len(overlap_idxs) >= 2:
-                    # Shortest in 3+ overlap: render on top, 2x shrink
-                    xl, xr = x + 6 + SHRINK * 6, x + col_w - 4 - SHRINK * 3
-                else:
-                    # 1 overlap, shorter event: original shrink
-                    xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
-            else:
+            if not overlap_idxs:
                 xl, xr = x + 4, x + col_w - 4
+            else:
+                cid, pos = ev_cluster[idx]
+                cluster_size = len(clusters[cid])
+                if cluster_size >= 2:
+                    # Same-timeline cluster: equal-width columns, left-to-right
+                    # by start time. Each card slightly overlaps the one to its
+                    # left (the right card draws on top).
+                    col_frac = col_w / cluster_size
+                    xl = x + 4 + int(pos * col_frac)
+                    xr = x + 4 + int((pos + 1) * col_frac) - 2
+                    # Leftmost card extends slightly under the next; rightmost
+                    # card extends to the edge. Non-rightmost cards add SHRINK
+                    # to their right edge so the next card overlaps them.
+                    if pos < cluster_size - 1:
+                        xr += SHRINK  # extend under the next card
+                    if pos > 0:
+                        xl -= SHRINK  # extend under the previous card
+                else:
+                    # Not in a same-timeline cluster — use the cascade layout
+                    # based on duration rank.
+                    all_durs = sorted([ev_infos[k][4] for k in overlap_idxs] + [duration], reverse=True)
+                    rank = all_durs.index(duration)
+                    if rank == 0:
+                        xl, xr = x + 6, x + col_w - 6 - SHRINK
+                    elif rank == 1 and len(all_durs) >= 3:
+                        xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
+                    elif len(overlap_idxs) >= 2:
+                        xl, xr = x + 6 + SHRINK * 6, x + col_w - 4 - SHRINK * 3
+                    else:
+                        xl, xr = x + 6 + SHRINK * 3, x + col_w - 4
             draw_infos.append((ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min))
 
         # Draw boxes: longest first so shorter events render ON TOP.
-        # For equal-duration pairs, left card (earlier start) has same duration
-        # as right — tie-break by start time so left draws first (underneath).
+        # For equal-duration / same-timeline pairs, tie-break by start time so
+        # left card (earlier start) draws first (underneath).
         now_min_total = now.hour * 60 + now.minute
         for info in sorted(draw_infos, key=lambda e: (-e[4], e[7])):
             ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min = info

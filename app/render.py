@@ -1044,7 +1044,6 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
         # For equal-duration / same-timeline pairs, tie-break by start time so
         # left card (earlier start) draws first (underneath).
         now_min_total = now.hour * 60 + now.minute
-        border_cmds = []  # collected for redraw after text outlines
         for info in sorted(draw_infos, key=lambda e: (-e[4], e[7])):
             ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min = info
             is_crossed = crossed_event_dim and (s_min <= now_min_total < e_min)
@@ -1096,9 +1095,6 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
             else:
                 draw.rounded_rectangle([bx0, by0, bx1, by1], radius=6,
                                        fill=box_fill, outline=box_outline, width=2)
-            # Collect border-only params for redraw after text outlines, so
-            # event borders are never covered by text outline strokes.
-            border_cmds.append((bx0, by0, bx1, by1, box_outline, 8 if bw_mode else 6))
             # Checkerboard dim: random pixel dithering with density controlled
             # by the brightness setting. Higher brightness → fewer black pixels.
             # 1.0 = 50% black, 0.1 = ~95% black, 1.9 = ~5% black.
@@ -1247,17 +1243,20 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                 text_cmds.append((txt_x, y, text, f, text_fill))
                 y += lh
 
-        # Two-pass render: draw all outlines first (shifted 2px down), then all
-        # text on top. Text is always the topmost layer, so any outline that
-        # overlaps an adjacent line's text is covered by that text.
+        # Two-pass render: draw all outlines first, then all text on top.
+        # Text is always the topmost layer, so any outline that overlaps an
+        # adjacent line's text is covered by that text.
+        # Outlines are clipped to stay INSIDE the event box (inset by the
+        # stroke width + border width) so they never cover event borders.
+        _outline_inset = text_outline_width + 2  # stroke + border
         for cmd in outline_cmds:
             needs_outline, txt_x, y, text, f, _bx0, _bx1, _by0, _by1 = cmd
             if not needs_outline:
                 continue
-            _clip_l = max(_bx0 + 2, int(txt_x) - 2)
-            _clip_r = min(_bx1 - 2, int(xr))
-            _clip_t = _by0 + 2
-            _clip_b = _by1 - 2
+            _clip_l = max(_bx0 + _outline_inset, int(txt_x) - text_outline_width)
+            _clip_r = min(_bx1 - _outline_inset, int(xr))
+            _clip_t = _by0 + _outline_inset
+            _clip_b = _by1 - _outline_inset
             _cw = _clip_r - _clip_l
             _ch = _clip_b - _clip_t
             if _cw > 0 and _ch > 0:
@@ -1269,12 +1268,6 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
                             font=f, stroke_width=text_outline_width,
                             stroke_fill=(255, 255, 255, 255))
                 img.paste(_layer, (_clip_l, _clip_t), _layer)
-        # Redraw event borders ON TOP of text outlines so the outline never
-        # covers an event's border. Only the outline is redrawn (fill=None so
-        # the box interior is untouched).
-        for _bx0, _by0, _bx1, _by1, _outline_color, _radius in border_cmds:
-            draw.rounded_rectangle([_bx0, _by0, _bx1, _by1], radius=_radius,
-                                   fill=None, outline=_outline_color, width=2)
         for txt_x, y, text, f, text_fill in text_cmds:
             draw.text((txt_x, y), text, fill=text_fill, font=f)
 

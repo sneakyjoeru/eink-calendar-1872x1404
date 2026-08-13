@@ -36,6 +36,7 @@ _last_time_line_render: float = 0.0
 _last_tl_minute: str = ""        # wall-clock minute key of the last time-line update (dedup)
 _last_event_poll: float = 0.0     # ts of the last event-change poll
 _last_render_date: str = ""  # track day changes for full refresh
+_last_render_hour: int = -1  # track hour changes for hard refresh
 _render_lock = threading.Lock()
 _last_render_duration: float = 2.0  # measured render time (updated each render)
 
@@ -195,7 +196,7 @@ def do_render(force: bool = False, force_full: bool = False,
         # same events, so events_changed would be False and the day change would
         # never be detected if this check came after the early return. A day
         # change must force a full clean refresh even when events are identical.
-        global _last_render_date
+        global _last_render_date, _last_render_hour
         today_str = now.strftime("%Y-%m-%d")
         day_changed = bool(_last_render_date and _last_render_date != today_str)
         if day_changed:
@@ -204,6 +205,17 @@ def do_render(force: bool = False, force_full: bool = False,
             logger.info("Day changed (%s → %s), forcing full refresh (%dx)",
                         _last_render_date, today_str, full_refresh_repeats)
         _last_render_date = today_str
+
+        # Hour change: force a hard full-screen refresh to clear ghosting.
+        # The time line moves to a new hour label and hour-grid line, which
+        # leaves residual pixels from the old position without a clean flash.
+        hour_changed = (_last_render_hour >= 0 and now.hour != _last_render_hour)
+        if hour_changed and not force_full:
+            force_full = True
+            full_refresh_repeats = max(1, int(settings.get("full_refresh_day_change", 2)))
+            logger.info("Hour changed (%d → %d), forcing full refresh (%dx)",
+                        _last_render_hour, now.hour, full_refresh_repeats)
+        _last_render_hour = now.hour
 
         if not force and not events_changed and not day_changed:
             logger.debug("No event changes, skipping render")
@@ -410,6 +422,26 @@ def background_loop():
                         tl_full_repeats = max(1, int(settings.get("full_refresh_interval", 1)))
                         logger.info("Time-line update: full-refresh interval (%dh) elapsed, forcing full (%dx)",
                                     full_interval, tl_full_repeats)
+                    # Hour change: force a hard full-screen refresh to clear
+                    # ghosting from the old hour-grid line + label position.
+                    global _last_render_hour
+                    _now_at_boundary = datetime.datetime.now()
+                    hour_changed = (_last_render_hour >= 0 and _now_at_boundary.hour != _last_render_hour)
+                    if hour_changed:
+                        tl_force_full = True
+                        tl_full_repeats = max(1, int(settings.get("full_refresh_day_change", 2)))
+                        logger.info("Time-line: hour changed (%d → %d), forcing full refresh (%dx)",
+                                    _last_render_hour, _now_at_boundary.hour, tl_full_repeats)
+                    _last_render_hour = _now_at_boundary.hour
+                    # Day change also needs to be tracked here (bypasses do_render)
+                    global _last_render_date
+                    _today_str = _now_at_boundary.strftime("%Y-%m-%d")
+                    if _last_render_date and _last_render_date != _today_str:
+                        tl_force_full = True
+                        tl_full_repeats = max(1, int(settings.get("full_refresh_day_change", 2)))
+                        logger.info("Time-line: day changed (%s → %s), forcing full refresh (%dx)",
+                                    _last_render_date, _today_str, tl_full_repeats)
+                    _last_render_date = _today_str
                     driver.render_to_screen(img, brightness=settings.get("brightness", 1.4),
                                             force_full=tl_force_full,
                                             full_refresh_repeats=tl_full_repeats,

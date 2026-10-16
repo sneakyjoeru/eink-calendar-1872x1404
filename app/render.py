@@ -957,6 +957,12 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
         # layout (left = longest, right = shorter, shifted right).
         SAME_TIME_TOLERANCE = 15  # minutes — events starting within this of each other are "same time"
         SHRINK = 6  # ~1mm at 150 DPI
+        # A same-timeline cluster is split side-by-side only when its members
+        # have comparable durations. A long block (e.g. a multi-hour "Work"
+        # span) that starts at the same time as a short event must NOT be
+        # shrunk to half width — the long event keeps the full column and the
+        # shorter event cascades on top of it instead.
+        SPLIT_MAX_RATIO = 3.0  # longest/shortest duration ratio for side-by-side
         draw_infos = []  # (ev, ey_top, ey_bot, eh, duration, xl, xr, s_min, e_min)
 
         # Group events into "same-timeline" clusters: events whose start times
@@ -1011,7 +1017,9 @@ def _render_day_grid(img, draw, events, now, ds_h, ds_m, de_h, de_m, max_full_da
             else:
                 cid, pos = ev_cluster[idx]
                 cluster_size = len(clusters[cid])
-                if cluster_size >= 2:
+                cluster_durs = [ev_infos[k][4] for k in clusters[cid]]
+                comparable = max(cluster_durs) <= SPLIT_MAX_RATIO * min(cluster_durs)
+                if cluster_size >= 2 and comparable:
                     # Same-timeline cluster: equal-width columns, left-to-right
                     # by start time. Each card slightly overlaps the one to its
                     # left (the right card draws on top).

@@ -27,11 +27,13 @@ HEADER_H = 120
 FOOTER_H = 30
 
 # Whole-page horizontal nudge, applied to every view after drawing. The panel's
-# visible area sits a few px left of the printed page centre (owner, 2026-11-15:
-# "could be shifted 3-6 px right"), so the finished image is pasted X_NUDGE px
-# right on a same-size white canvas. The old right edge still lands at 1862 px,
-# inside the panel, so nothing is clipped.
-X_NUDGE = 4
+# visible area sits left of the printed page centre, so the finished image is
+# pasted X_NUDGE px right on a same-size white canvas. The target (owner,
+# 2026-11-15) is the grid's right-hand vertical line on the panel's last pixel
+# column: undrawn ink ends at x=1859, panel last column is 1871 -> nudge 12.
+# The compositor keeps W px, so 12 px of the old right margin is dropped and
+# nothing that matters is clipped.
+X_NUDGE = 12
 
 # Fonts — try DejaVu, fall back to default
 _FONT_PATHS = [

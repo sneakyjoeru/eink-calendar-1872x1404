@@ -26,6 +26,13 @@ RIGHT_PAD = 10  # right edge padding
 HEADER_H = 120
 FOOTER_H = 30
 
+# Whole-page horizontal nudge, applied to every view after drawing. The panel's
+# visible area sits a few px left of the printed page centre (owner, 2026-11-15:
+# "could be shifted 3-6 px right"), so the finished image is pasted X_NUDGE px
+# right on a same-size white canvas. The old right edge still lands at 1862 px,
+# inside the panel, so nothing is clipped.
+X_NUDGE = 4
+
 # Fonts — try DejaVu, fall back to default
 _FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -278,6 +285,13 @@ def render_calendar(view_mode: str, events: list[dict],
     # event shading. That artifact is now handled at the driver level by the
     # 2px-grid snap (snap_to_2px_grid), so the image is passed through with its
     # 16-level grays intact and rendered natively by GC16 (full) / GL16 (region).
+
+    # Whole-page nudge — see X_NUDGE. Applied last so every view and the
+    # /preview endpoint show exactly what the panel shows.
+    if X_NUDGE:
+        nudged = Image.new("RGB", (W, H), (255, 255, 255))
+        nudged.paste(img, (X_NUDGE, 0))
+        img = nudged
 
     return img
 
